@@ -6,6 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
+from docling_core.transforms.chunker.hierarchical_chunker import DocChunk
 from docling.datamodel.document import ConversionResult
 
 
@@ -17,7 +18,6 @@ app=FastAPI(
 
 try:
     converter = DocumentConverter()
-    chunker = HybridChunker()
 except Exception as e:
     print(f"Doclingden alınan modeller alınırken bir sıkıntı yaşandı: {str(e)}")
 
@@ -67,29 +67,40 @@ async def convert(file:UploadFile=File(...)):
     )
 
 @app.post("/convert-and-chunk", summary="This endpoint is to convert markdown and separate to chunks ")
-async def convert_and_chunk(file: UploadFile = File(...)):
+async def convert_and_chunk(file: UploadFile = File(...), max_tokens: int = 400 ):
 
     parsed_doc = to_markdown(file)
     
+
+    chunker = HybridChunker(max_tokens=max_tokens)
+
     chunks = chunker.chunk(parsed_doc.document)
 
     def chunk_generator():
+
+
+
         for i, chunk in enumerate(chunks):
             chunk_text = chunker.serialize(chunk)
-            page_numbers = []
-            
-            if chunk.meta and chunk.meta.doc_items:
-                page_numbers = list(set([
-                    page.page_no for page in chunk.meta.doc_items.prov 
-                    if hasattr(page, 'page_no')
-                ]))
+
+            doc_chunk = DocChunk.model_validate(chunk)
+
+            page_numbers = set()
+            if doc_chunk.meta and doc_chunk.meta.doc_items:
+                for item in doc_chunk.meta.doc_items:
+                    if hasattr(item, "prov") and item.prov:
+                        for prov_item in item.prov:
+                            if hasattr(prov_item, "page_no"):
+                                page_numbers.add(prov_item.page_no)
+
             
             chunk_data = {
                 "chunk_index": i,
                 "text": chunk_text,
                 "metadata": {
                     "source_file": file.filename, 
-                    "page_numbers": sorted(page_numbers)
+                    "page_numbers": sorted(list(page_numbers)),
+                    "chunk_size_tokens": max_tokens 
                 }
             }
             yield json.dumps(chunk_data, ensure_ascii=False) + "\n"
@@ -100,7 +111,7 @@ async def convert_and_chunk(file: UploadFile = File(...)):
 
 def to_markdown(file: UploadFile) -> ConversionResult:
 
-    suffix = os.path.splitext(file.filename).lower() # splitext ile dosyanın formatını alıyoruz
+    suffix = os.path.splitext(file.filename)[1].lower() # splitext ile dosyanın formatını alıyoruz
     if suffix not in SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=400, 
