@@ -1,0 +1,14 @@
+services:
+  docling_converter_service:
+    build: . #burada image dosyasının DockerFile ın yolunu belirtiyoruz
+    container_name: docling_converter_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - docling_models:/app/models_cache
+    environment:
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  docling_models:
