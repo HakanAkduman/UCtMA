@@ -1,0 +1,32 @@
+
+
+services:
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: rag-platform-postgres
+    ports:
+      - "${DB_HOST_PORT}:${DB_CONTAINER_PORT}"
+    environment:
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend-service:
+    build: .
+    container_name: rag-platform-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_URL=jdbc:postgresql://postgres-db:${DB_CONTAINER_PORT}/${DB_NAME}
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION}
+    depends_on:
+      - postgres-db
+
+volumes:
+  pgdata:
