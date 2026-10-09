@@ -29,9 +29,17 @@ public class SecurityConfig {
 
                         // 2. Sadece ADMIN olanların erişebileceği endpoint'ler
                         .requestMatchers("/uctma/api/auth/register").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/uctma/api/auth/list-users").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/uctma/api/auth/delete").hasAuthority("ROLE_ADMIN")
 
                         // 3. Giriş yapmış HER HANGİ bir kullanıcının erişebileceği endpoint'ler
                         .requestMatchers("/uctma/api/auth/change-password").authenticated()
+
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
 
                         // 4. Kalan tüm endpoint'ler için oturum açmış olma şartı
                         .anyRequest().authenticated()

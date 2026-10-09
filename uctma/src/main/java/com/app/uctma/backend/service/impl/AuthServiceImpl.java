@@ -1,9 +1,6 @@
 package com.app.uctma.backend.service.impl;
 
-import com.app.uctma.backend.dto.ChangePasswordReqDTO;
-import com.app.uctma.backend.dto.LoginReqDTO;
-import com.app.uctma.backend.dto.LoginResDTO;
-import com.app.uctma.backend.dto.RegisterReqDTO;
+import com.app.uctma.backend.dto.*;
 import com.app.uctma.backend.model.User;
 import com.app.uctma.backend.repository.UserRepository;
 import com.app.uctma.backend.service.AuthService;
@@ -14,9 +11,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +43,31 @@ public class AuthServiceImpl implements AuthService {
         emailService.sendTempPasswordEmail(user.getEmail(), tempPassword);
 
         return "Kullanıcı başarıyla oluşturuldu. Geçici şifre e-posta adresine gönderildi.";
+    }
+
+    @Override
+    public String delete(String email) {
+        // İstek atan aktif kullanıcının email'ini al
+        String currentUserEmail = Objects.requireNonNull(SecurityContextHolder.getContext().getAuthentication()).getName();
+
+        if (currentUserEmail.equalsIgnoreCase(email)) {
+            throw new RuntimeException("Kendi hesabınızı silemezsiniz!");
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı: " + email));
+
+        userRepository.delete(user);
+        return "Kullanıcı başarıyla silindi!";
+    }
+
+    @Override
+    public List<UserListResDTO> listOfUsers() {
+        return userRepository.findAll().stream().map(
+                user -> {
+                    return new UserListResDTO(user.getEmail(),user.getRole());
+                }
+        ).toList();
     }
 
     @Override
