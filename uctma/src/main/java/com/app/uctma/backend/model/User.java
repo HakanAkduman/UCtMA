@@ -36,6 +36,9 @@ public class User implements UserDetails {
     @Length(min = 3,message = "password can not be less than 3 character")
     private String password;
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<FileMetadata> files;
+
     @NotNull(message = "Role can not be empty")
     @Enumerated(EnumType.STRING)
     private Role role;

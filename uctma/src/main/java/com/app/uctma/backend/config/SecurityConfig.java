@@ -26,6 +26,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 1. Herkese açık endpoint'ler (Giriş yapmadan erişilebilir)
                         .requestMatchers("/uctma/api/auth/login").permitAll()
+                        .requestMatchers("/uctma/api/file/callback").permitAll() // !!!!! bunu daha sonra nasıl yapabiliriz düşünmem lazım !!!!!! UNUTMAAAAAAAAAA
 
                         // 2. Sadece ADMIN olanların erişebileceği endpoint'ler
                         .requestMatchers("/uctma/api/auth/register").hasAuthority("ROLE_ADMIN")

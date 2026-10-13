@@ -13,11 +13,28 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: uctma_rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+      - "${RABBITMQ_MGMT_PORT}:${RABBITMQ_MGMT_PORT}"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+
   backend-service:
     build: .
     container_name: rag-platform-backend
     ports:
       - "8080:8080"
+    volumes:
+      - uploads:/uploads
     env_file:
       - .env
     environment:
@@ -32,8 +49,23 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
+      - UPLOAD_PATH=${UPLOAD_PATH}
+      - SPRING_RABBITMQ_HOST=${RABBITMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RABBITMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
+      - RABBITMQ_QUEUE_FILE=${RABBITMQ_QUEUE_FILE}
+      - RABBITMQ_EXCHANGE_FILE=${RABBITMQ_EXCHANGE_FILE}
+      - RABBITMQ_ROUTING_KEY_FILE=${RABBITMQ_ROUTING_KEY_FILE}
     depends_on:
       - postgres-db
 
 volumes:
   pgdata:
+  rabbitmq_data:
+  uploads:
+    name: uctma_uploads
+
+networks:
+  default:
+    name: uctma_default

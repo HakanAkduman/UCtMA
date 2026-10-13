@@ -1,133 +1,72 @@
-import os 
-import shutil
+import os
 import tempfile
-import json
+import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
-from docling.document_converter import DocumentConverter
-from docling.chunking import HybridChunker
-from docling_core.transforms.chunker.hierarchical_chunker import DocChunk
-from docling.datamodel.document import ConversionResult
+from fastapi.responses import JSONResponse
+from docling_processor import process_file_with_docling, SUPPORTED_EXTENSIONS 
 
-
-app=FastAPI(
-    title = "Docling Converter Service",
-    description= "Docling kullanarak belgeleri markdown a dönüştüren, isteğe göre chuncklara da bölen bir servis.",
+app = FastAPI(
+    title="Docling Converter Service",
+    description="Docling kullanarak belgeleri markdown'a dönüştüren ve chunk'lara bölen servis.",
     version="1.0.0"
 )
 
-try:
-    converter = DocumentConverter()
-except Exception as e:
-    print(f"Doclingden alınan modeller alınırken bir sıkıntı yaşandı: {str(e)}")
+@app.get("/health", summary="Servis sağlık kontrolü")
+async def health():
+    return {"status": "healthy", "service": "Docling Converter Service"}
 
-
-# çıktıların sunucuda geçici olarak saklanacağı ve indirileceği klasör
-OUTPUT_DIR = "/tmp/parser_outputs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".csv", ".xlsx", ".txt"}
-
-def validate_file_extension(filename:str) -> str:
-    suffix= os.path.splitext(filename).lower #splitext ile uzantısını alıyoruz
+@app.post("/convert", summary="Desteklenen dosyaları Markdown formatına dönüştürür")
+async def convert(file: UploadFile = File(...)):
+    suffix = os.path.splitext(file.filename)[1].lower() #dosyaının uzantısını alıyourz
     if suffix not in SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail = f"Unsupported file type. {suffix} files are not supported"
-        )
-    return suffix
-
-
-
-
-@app.get("/health",summary="This endpoint is just to check whether service is up or not")
-async def heath():
-    return {"status": "healthy", "service": "Docling Converter Service"}
-
-
-
-#bu endpoint desteklenen formattaki dosyaları markdown formatına dönüştürerek kaydeder ve response da dosya yolunu döndürür
-@app.post("/convert",summary ="This endpoint is to convert supported files to markdown format")
-async def convert(file:UploadFile=File(...)):
-
-    parsed_doc = to_markdown(file)
-    
-    markdown_output = parsed_doc.document.export_to_markdown()
-    
-    output_filename = f"{os.path.splitext(file.filename)[0]}.md"
-    output_filepath = os.path.join(OUTPUT_DIR, output_filename)
-
-    with open(output_filepath, "w", encoding="utf-8") as f:
-        f.write(markdown_output)
-
-    return FileResponse(
-        path=output_filepath, 
-        filename=output_filename, 
-        media_type="text/markdown"
-    )
-
-@app.post("/convert-and-chunk", summary="This endpoint is to convert markdown and separate to chunks ")
-async def convert_and_chunk(file: UploadFile = File(...), max_tokens: int = 400 ):
-
-    parsed_doc = to_markdown(file)
-    
-
-    chunker = HybridChunker(max_tokens=max_tokens)
-
-    chunks = chunker.chunk(parsed_doc.document)
-
-    def chunk_generator():
-
-
-
-        for i, chunk in enumerate(chunks):
-            chunk_text = chunker.serialize(chunk)
-
-            doc_chunk = DocChunk.model_validate(chunk)
-
-            page_numbers = set()
-            if doc_chunk.meta and doc_chunk.meta.doc_items:
-                for item in doc_chunk.meta.doc_items:
-                    if hasattr(item, "prov") and item.prov:
-                        for prov_item in item.prov:
-                            if hasattr(prov_item, "page_no"):
-                                page_numbers.add(prov_item.page_no)
-
-            
-            chunk_data = {
-                "chunk_index": i,
-                "text": chunk_text,
-                "metadata": {
-                    "source_file": file.filename, 
-                    "page_numbers": sorted(list(page_numbers)),
-                    "chunk_size_tokens": max_tokens 
-                }
-            }
-            yield json.dumps(chunk_data, ensure_ascii=False) + "\n"
-
-                                #ndjson ile birlikte her json objesini ayrı satır olarak dönüyorum
-    return StreamingResponse(chunk_generator(), media_type="application/x-ndjson") 
-
-
-def to_markdown(file: UploadFile) -> ConversionResult:
-
-    suffix = os.path.splitext(file.filename)[1].lower() # splitext ile dosyanın formatını alıyoruz
-    if suffix not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file type: {suffix}. Supported types: {', '.join(SUPPORTED_EXTENSIONS)}"
+            detail=f"Desteklenmeyen dosya formatı: {suffix}. Desteklenenler: {', '.join(SUPPORTED_EXTENSIONS)}"
         )
 
+    # Dosyayı geçici dizine kaydediyoruz
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp) #dosyayı işleme almak iç.in geçici olarak kaydediyoruz
+        shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
 
     try:
-  
-        conversion_result = converter.convert(tmp_path)
-        return conversion_result
+        # kendi docling servisimizi çağırıyoruz
+        result = process_file_with_docling(tmp_path, conversion_type="CONVERT")
+        return JSONResponse(content={
+            "filename": file.filename,
+            "convertedText": result["convertedText"]
+        })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Belge analiz edilirken hata oluştu: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Dönüştürme sırasında hata oluştu: {str(e)}")
     finally:
-        if os.path.exists(tmp_path): #işlem bittikten sonra geçici dosyayı siliyoruz
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+@app.post("/convert-and-chunk", summary="Belgeyi dönüştürür ve chunklara böler")
+async def convert_and_chunk(file: UploadFile = File(...), max_tokens: int = 400):
+
+
+    suffix = os.path.splitext(file.filename)[1].lower()
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Desteklenmeyen dosya formatı: {suffix}. Desteklenenler: {', '.join(SUPPORTED_EXTENSIONS)}"
+        )
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        
+        result = process_file_with_docling(tmp_path, conversion_type="CONVERT_AND_CHUNK", max_tokens=max_tokens)
+        return JSONResponse(content={
+            "filename": file.filename,
+            "convertedText": result["convertedText"],
+            "chunks": result["chunks"]
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chunking sırasında hata oluştu: {str(e)}")
+    finally:
+        if os.path.exists(tmp_path):
             os.remove(tmp_path)

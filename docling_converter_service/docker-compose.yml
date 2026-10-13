@@ -2,13 +2,28 @@ services:
   docling_converter_service:
     build: . #burada image dosyasının DockerFile ın yolunu belirtiyoruz
     container_name: docling_converter_service
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - uploads:/uploads
       - docling_models:/app/models_cache
     environment:
       - PYTHONUNBUFFERED=1
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_QUEUE_FILE=${RABBITMQ_QUEUE_FILE}
+      - RABBITMQ_EXCHANGE_FILE=${RABBITMQ_EXCHANGE_FILE}
+      - RABBITMQ_ROUTING_KEY_FILE=${RABBITMQ_ROUTING_KEY_FILE}
+      - BACKEND_CALLBACK_URL=${BACKEND_CALLBACK_URL}
 
 volumes:
   docling_models:
+  uploads:
+    name: uctma_uploads
+
+networks:
+  default:
+    name: uctma_default
