@@ -12,6 +12,7 @@ RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 QUEUE_NAME = os.getenv("RABBITMQ_QUEUE_FILE", "file_processing_queue")
 RECONNECT_DELAY_SECONDS = 5
+RABBITMQ_HEARTBEAT_SECONDS = int(os.getenv("RABBITMQ_HEARTBEAT_SECONDS", 600))
 
 BACKEND_CALLBACK_URL = os.getenv("BACKEND_CALLBACK_URL")
 
@@ -55,9 +56,7 @@ def callback(ch, method, properties, body):
     print(f"\n[*] RabbitMQ'dan mesaj alındı -> File ID: {file_id}")
 
     try:
-        # docling deki fonksiyonu çalıştırıyoruz
         result = process_file_with_docling(file_path, conversion_type, max_tokens)
-
         payload = {
             "fileId": file_id,
             "status": "COMPLETED",
@@ -65,11 +64,6 @@ def callback(ch, method, properties, body):
             "chunks": result.get("chunks"),
             "errorMessage": None
         }
-        if send_callback(payload):
-            acknowledge_message(ch, method.delivery_tag)
-        else:
-            reject_message(ch, method.delivery_tag)
-
     except Exception as e:
         print(f"[ERROR] İşlem sırasında hata: {e}")
         callback_sent = send_callback({
@@ -83,6 +77,12 @@ def callback(ch, method, properties, body):
             acknowledge_message(ch, method.delivery_tag)
         else:
             reject_message(ch, method.delivery_tag)
+        return
+
+    if send_callback(payload):
+        acknowledge_message(ch, method.delivery_tag)
+    else:
+        reject_message(ch, method.delivery_tag)
 
 def start_consumer():
     while True:
@@ -93,6 +93,8 @@ def start_consumer():
                 host=RABBITMQ_HOST,
                 port=RABBITMQ_PORT,
                 credentials=creds,
+                heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
+                blocked_connection_timeout=300,
             )
             conn = pika.BlockingConnection(params)
             channel = conn.channel()

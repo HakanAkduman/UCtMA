@@ -10,6 +10,7 @@ services:
       - docling_models:/app/models_cache
     environment:
       - PYTHONUNBUFFERED=1
+      - RABBITMQ_HEARTBEAT_SECONDS=${RABBITMQ_HEARTBEAT_SECONDS:-600}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
       - RABBITMQ_USER=${RABBITMQ_USER}

@@ -158,19 +158,21 @@ public class FileStorageServiceImpl implements FileStorageService {
              ZipOutputStream zos = new ZipOutputStream(baos)) {
 
             for (FileChunk chunk : chunks) {
+                if (chunk.getFilePath() == null || chunk.getFilePath().isBlank()) {
+                    throw new IOException("Chunk dosya yolu boş: " + chunk.getId());
+                }
+
                 Path chunkPath = Paths.get(chunk.getFilePath()).toAbsolutePath().normalize();
 
-                if (Files.exists(chunkPath)) {
-                    // ZIP içi dosya adı: file_3_chunk_1.txt
-                    String zipEntryName = String.format(chunk.getChunkName());
-                    ZipEntry zipEntry = new ZipEntry(zipEntryName);
-                    zos.putNextEntry(zipEntry);
-
-                    // Dosya içeriğini ZIP akışına yazıyoruz
-                    byte[] bytes = Files.readAllBytes(chunkPath);
-                    zos.write(bytes, 0, bytes.length);
-                    zos.closeEntry();
+                if (!Files.isRegularFile(chunkPath) || !Files.isReadable(chunkPath)) {
+                    throw new IOException("Chunk dosyası bulunamadı veya okunamıyor: " + chunk.getId());
                 }
+
+                String zipEntryName =chunk.getChunkName();
+
+                zos.putNextEntry(new ZipEntry(zipEntryName));
+                zos.write(Files.readAllBytes(chunkPath));
+                zos.closeEntry();
             }
 
             zos.finish();
@@ -184,7 +186,10 @@ public class FileStorageServiceImpl implements FileStorageService {
             };
 
         } catch (IOException e) {
-            throw new RuntimeException("Chunk dosyaları ZIP haline getirilirken hata oluştu!", e);
+            throw new RuntimeException(
+                    "Chunk dosyaları ZIP haline getirilirken hata oluştu: " + e.getMessage(),
+                    e
+            );
         }
     }
 
