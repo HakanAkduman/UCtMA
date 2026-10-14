@@ -24,10 +24,15 @@ def send_callback(payload: dict):
             f"Response: {res.text[:500]}"
         )
         res.raise_for_status()
-        return True
+        return True, False
+    except requests.HTTPError as e:
+        # 4xx usually means the callback payload/endpoint is invalid for this
+        # message and retrying it would create an endless poison-message loop.
+        status_code = e.response.status_code if e.response is not None else None
+        return False, status_code is not None and 400 <= status_code < 500
     except Exception as e:
         print(f"[CALLBACK ERROR] Backend'e ulaşılamadı: {e}")
-        return False
+        return False, False
 
 
 def acknowledge_message(ch, delivery_tag):
@@ -66,20 +71,21 @@ def callback(ch, method, properties, body):
         }
     except Exception as e:
         print(f"[ERROR] İşlem sırasında hata: {e}")
-        callback_sent = send_callback({
+        callback_sent, callback_is_permanent_error = send_callback({
             "fileId": file_id,
             "status": "FAILED",
             "convertedText": None,
             "chunks": [],
             "errorMessage": str(e)
         })
-        if callback_sent:
+        if callback_sent or callback_is_permanent_error:
             acknowledge_message(ch, method.delivery_tag)
         else:
             reject_message(ch, method.delivery_tag)
         return
 
-    if send_callback(payload):
+    callback_sent, callback_is_permanent_error = send_callback(payload)
+    if callback_sent or callback_is_permanent_error:
         acknowledge_message(ch, method.delivery_tag)
     else:
         reject_message(ch, method.delivery_tag)

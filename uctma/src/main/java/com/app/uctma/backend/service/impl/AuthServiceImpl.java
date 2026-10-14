@@ -89,7 +89,8 @@ public class AuthServiceImpl implements AuthService {
                 user.getEmail(),
                 token,
                 "Bearer",
-                user.isNewPasswordFlag()
+                user.isNewPasswordFlag(),
+                user.getRole()
         );
     }
 

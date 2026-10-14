@@ -26,6 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserDetailsService userDetailsService; // Spring Security kullanıcı detayı servisi
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "/uctma/api/file/callback".equals(request.getServletPath());
+    }
+
+    @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,

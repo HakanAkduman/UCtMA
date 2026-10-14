@@ -9,11 +9,44 @@ except Exception as e:
     print(f"Docling modeli yüklenirken hata oluştu: {str(e)}")
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".csv", ".xlsx", ".txt"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".csv", ".xlsx", ".txt", ".md"}
+PLAIN_TEXT_EXTENSIONS = {".csv", ".txt", ".md"}
+
+
+def _chunk_markdown(markdown_text: str, max_tokens: int) -> list[dict]:
+    """Split plain Markdown into simple word-based chunks.
+
+    Markdown files do not need Docling conversion. The word limit is an
+    approximation of the tokenizer limit used by HybridChunker and keeps the
+    existing callback shape for CONVERT_AND_CHUNK.
+    """
+    words = markdown_text.split()
+    chunk_size = max_tokens or 400
+
+    return [
+        {
+            "chunkIndex": index,
+            "text": " ".join(words[start:start + chunk_size]),
+            "pageNumbers": [],
+        }
+        for index, start in enumerate(range(0, len(words), chunk_size))
+    ]
 
 def process_file_with_docling(file_path: str, conversion_type: str, max_tokens: int = 400):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Dosya bulunamadı: {file_path}")
+
+    extension = os.path.splitext(file_path)[1].lower()
+    if extension in PLAIN_TEXT_EXTENSIONS:
+        with open(file_path, "r", encoding="utf-8") as markdown_file:
+            plain_text = markdown_file.read()
+
+        return {
+            "convertedText": plain_text,
+            "chunks": _chunk_markdown(plain_text, max_tokens)
+            if conversion_type == "CONVERT_AND_CHUNK"
+            else [],
+        }
 
     conversion_result = converter.convert(file_path)
     

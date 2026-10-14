@@ -21,6 +21,7 @@ public class EmailServiceImpl implements EmailService {
         message.setSubject("UCtMA Sistemine Hoş Geldiniz - Geçici Şifreniz");
         message.setText("Merhaba,\n\n" +
                 "UCtMA platformuna hesabınız başarıyla tanımlanmıştır.\n" +
+                "Kullnıcı adınız: "+targetMail+" \n" +
                 "Geçici Şifreniz: " + password + "\n\n" +
                 "Lütfen ilk girişinizde şifrenizi değiştirmeyi unutmayın.");
 

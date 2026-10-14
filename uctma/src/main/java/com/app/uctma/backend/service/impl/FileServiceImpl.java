@@ -21,10 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class FileServiceImpl implements FileService {
+
+    private static final Set<String> SUPPORTED_FILE_EXTENSIONS = Set.of(
+            ".pdf", ".docx", ".pptx", ".html", ".csv", ".xlsx", ".txt", ".md"
+    );
 
     private final FileMetadataRepository fileMetadataRepository;
     private final FileStorageService fileStorageService;
@@ -40,6 +46,7 @@ public class FileServiceImpl implements FileService {
 
 
         User user= checkAccessObj.checkUserValid();
+        validateFileExtension(convertFileReqDTO.getFile().getOriginalFilename());
 
 
         String savedFilePath=fileStorageService.saveFile(convertFileReqDTO.getFile());
@@ -74,6 +81,26 @@ public class FileServiceImpl implements FileService {
                 .maxTokens(savedMetadata.getMaxTokens())
                 .createdAt(savedMetadata.getCreatedAt())
                 .build();
+    }
+
+    private void validateFileExtension(String originalFileName) {
+        if (originalFileName == null || originalFileName.isBlank()) {
+            throw new IllegalArgumentException("Dosya adı boş olamaz.");
+        }
+
+        int extensionStart = originalFileName.lastIndexOf('.');
+        String extension = extensionStart >= 0
+                ? originalFileName.substring(extensionStart).toLowerCase(Locale.ROOT)
+                : "";
+
+        if (!SUPPORTED_FILE_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException(
+                    "Desteklenmeyen dosya formatı: "
+                            + (extension.isBlank() ? "uzantısız" : extension)
+                            + ". Desteklenen formatlar: "
+                            + SUPPORTED_FILE_EXTENSIONS
+            );
+        }
     }
 
     @Override
@@ -124,6 +151,7 @@ public class FileServiceImpl implements FileService {
     @Transactional
     public void reconvertFile(Long fileId, ConversionType conversionType, Integer maxTokens) {
         FileMetadata fileMetadata = checkAccessObj.userHasAccessToFile(fileId);
+        validateFileExtension(fileMetadata.getOriginalFileName());
         deleteDerivedFiles(fileMetadata);
 
         fileMetadata.setStatus(FileStatus.PENDING);
@@ -174,7 +202,12 @@ public class FileServiceImpl implements FileService {
         fileMetadataRepository.save(fileMetadata);
 
         if (callbackDTO.getStatus() == FileStatus.FAILED) {
-            System.out.println("Dosya dönüştürme sırasında hata oldu: " + fileMetadata);
+            System.out.println(
+                    "Dosya dönüştürme sırasında hata oldu. File ID: "
+                            + fileMetadata.getId()
+                            + ", hata: "
+                            + callbackDTO.getErrorMessage()
+            );
             return;
         }
 

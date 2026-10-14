@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build: .
+    container_name: uctma_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: ${BACKEND_URL}
+    networks:
+      - uctma_default
+
+networks:
+  uctma_default:
+    external: true

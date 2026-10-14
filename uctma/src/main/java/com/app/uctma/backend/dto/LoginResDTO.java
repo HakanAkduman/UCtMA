@@ -19,6 +19,7 @@ public class LoginResDTO {
     private String token;
     private String tokenType;
     private boolean newPasswordRequired;
+    private Role role;
 
 
 
