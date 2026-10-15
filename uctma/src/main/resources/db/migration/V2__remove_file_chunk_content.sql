@@ -1,0 +1,2 @@
+ALTER TABLE file_chunks
+DROP COLUMN IF EXISTS content;

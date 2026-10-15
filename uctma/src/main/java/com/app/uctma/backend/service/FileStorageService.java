@@ -10,7 +10,7 @@ import java.util.List;
 public interface FileStorageService {
     void init() ;
     String saveFile(MultipartFile file) ;
-    String saveChunk(FileChunk chunk);
+    String saveChunk(String chunkName, String content);
     String saveMdFile(FileMetadata fileMetadata,String mdData);
     void deleteFile(String filePath);
     Resource loadFileAsResource(String filePath);

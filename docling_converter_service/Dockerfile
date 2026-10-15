@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
     libpq-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,6 +20,7 @@ COPY . .
 
 # Shared Volume için gerekli dizinleri oluşturuyoruz
 RUN mkdir -p /app/uploads/chunks
+RUN mkdir -p /app/models_cache
 
 # Docling / HuggingFace modellerinin indirileceği dizin
 ENV HF_HOME=/app/models_cache

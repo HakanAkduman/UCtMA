@@ -78,22 +78,20 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    public String saveChunk(FileChunk chunk) {
+    public String saveChunk(String chunkName, String content) {
         Path chunksDir = Paths.get(uploadDir, "chunks");
 
-        String chunkFileName = chunk.getChunkName();
-
-        Path chunkFilePath = chunksDir.resolve(chunkFileName);
+        Path chunkFilePath = chunksDir.resolve(chunkName);
 
         try {
             Files.writeString(
                     chunkFilePath,
-                    chunk.getContent(),
+                    content,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING
             );
         } catch (Exception e) {
-            throw new RuntimeException("Chunk dosyası yazılırken hata oluştu: " + chunkFileName, e);
+            throw new RuntimeException("Chunk dosyası yazılırken hata oluştu: " + chunkName, e);
         }
 
         return chunkFilePath.toString();

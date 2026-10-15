@@ -10,14 +10,10 @@ type FileUploaderProps = {
 };
 
 export const SUPPORTED_FILE_EXTENSIONS = [
-  ".pdf",
-  ".docx",
-  ".pptx",
-  ".html",
-  ".csv",
-  ".xlsx",
-  ".txt",
-  ".md",
+  ".csv", ".txt",  ".md",
+  ".wav",  ".mp3",  ".m4a",  ".aac",  ".ogg",  ".flac",  ".mp4",  ".avi",  ".mov",  ".mkv",  ".webm",
+  ".pdf",  ".docx",  ".pptx",  ".html",  ".xlsx",  
+  ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
 ];
 
 // Dosya seçimi component içinde tutulur. Conversion ayarları ise parent'tan
@@ -64,10 +60,15 @@ export function FileUploader({
             <option value="CONVERT_AND_CHUNK">Markdown + Chunk</option>
           </select>
         </label>
-        <label className="space-y-1 text-sm font-medium">
+        { conversionType === "CONVERT_AND_CHUNK" &&(
+          <label className="space-y-1 text-sm font-medium">
           Max token
           <input className="input w-full" type="number" min="1" value={maxTokens} onChange={(e) => onMaxTokensChange(e.target.value)} />
         </label>
+        )}
+        
+
+       
         <button className="button w-full sm:w-auto" disabled={busy}>{busy ? "Yükleniyor..." : "Yükle"}</button>
       </div>
     </form>

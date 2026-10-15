@@ -24,7 +24,11 @@ def send_callback(payload: dict):
             f"Response: {res.text[:500]}"
         )
         res.raise_for_status()
-        return True, False
+        return True, False  #burada birden fazla değer döndürüyoruz, 
+         # ilk değer callback'in başarılı olup olmadığını, ikinci değer ise kalıcı bir hata olup olmadığını belirtiyor.
+         # bu sayede eğer callback başarısız olursa ve kalıcı bir hata değilse, mesajı tekrar kuyruğa atabiliriz.
+         # false false dönerse, mesajı tekrar kuyruğa atabiliriz. true false veya false true şeklinde dönerse mesajı
+         # tekrar değerlendirmeyi kabul edebiliriz. Aşağıdaki returnler de aynı mantıkla çalışıyor.
     except requests.HTTPError as e:
         # 4xx usually means the callback payload/endpoint is invalid for this
         # message and retrying it would create an endless poison-message loop.
@@ -50,7 +54,6 @@ def callback(ch, method, properties, body):
     data = json.loads(body.decode('utf-8'))
 
     file_id = data.get("fileId")
-    #file_path = data.get("filePath")
 
     file_path = data.get("filePath")
 

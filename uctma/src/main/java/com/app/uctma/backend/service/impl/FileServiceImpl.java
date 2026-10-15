@@ -29,7 +29,11 @@ import java.util.Set;
 public class FileServiceImpl implements FileService {
 
     private static final Set<String> SUPPORTED_FILE_EXTENSIONS = Set.of(
-            ".pdf", ".docx", ".pptx", ".html", ".csv", ".xlsx", ".txt", ".md"
+        ".csv", ".txt", ".md",
+        ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac",
+        ".mp4", ".avi", ".mov", ".mkv", ".webm",
+        ".pdf", ".docx", ".pptx", ".html", ".xlsx",
+        ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"
     );
 
     private final FileMetadataRepository fileMetadataRepository;
@@ -186,7 +190,7 @@ public class FileServiceImpl implements FileService {
     @Transactional
     public void handleFileProcessingCallback(FileProcessingCallbackReqDTO callbackDTO) {
         System.out.println("Python dan callback alındı. File ID: " + callbackDTO.getFileId() +
-                ", Status: " + callbackDTO.getStatus());
+                ", Status: " + callbackDTO.getStatus()+ "tüm callback: "+ callbackDTO.toString());
 
         FileMetadata fileMetadata = fileMetadataRepository.findById(callbackDTO.getFileId())
                 .orElseThrow(() -> new RuntimeException("Callback için dosya bulunamadı! ID: " + callbackDTO.getFileId()));
@@ -217,14 +221,16 @@ public class FileServiceImpl implements FileService {
             for (ChunkDTO chunkDTO : callbackDTO.getChunks()) {
 
                 FileChunk chunk = FileChunk.builder()
-                        .content(chunkDTO.getText())
                         .chunkIndex(chunkDTO.getChunkIndex())
                         .chunkName(fileMetadata.getId()+"_"+fileMetadata.getOriginalFileName()+"_"+chunkDTO.getChunkIndex()+".txt")
                         .fileMetadata(fileMetadata)
                         .build();
 
 
-                String savedFilePath = fileStorageService.saveChunk(chunk);
+                String savedFilePath = fileStorageService.saveChunk(
+                        chunk.getChunkName(),
+                        chunkDTO.getText()
+                );
 
                 chunk.setFilePath(savedFilePath);
                 chunkEntities.add(chunk);

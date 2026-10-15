@@ -33,9 +33,6 @@ public class FileChunk {
 
 
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    private String content;
-
     private Integer tokenCount;
 
     @ManyToOne(fetch = FetchType.LAZY)

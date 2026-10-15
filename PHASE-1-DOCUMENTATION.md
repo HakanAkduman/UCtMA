@@ -196,12 +196,25 @@ jdbc:postgresql://postgres-db:${DB_CONTAINER_PORT}/${DB_NAME}
 Backend'te şu ayar kullanılır:
 
 ```text
-spring.jpa.hibernate.ddl-auto=update
+spring.jpa.hibernate.ddl-auto=validate
 ```
 
-Bu nedenle Hibernate mevcut entity modeline göre database şemasını güncellemeyi dener.
+Hibernate database şemasını değiştirmez.
 
-Projede ayrı bir migration aracı veya migration script'i bulunmamaktadır.
+Database değişikliklerini Flyway migration'ları yönetir.
+
+Flyway migration dosyaları şu dizindedir:
+
+```text
+uctma/src/main/resources/db/migration
+```
+
+Flyway mevcut database için `baseline-on-migrate=true` ve
+`baseline-version=1` kullanır.
+
+Yeni database için `V1__create_initial_schema.sql` çalışır.
+
+`V2__remove_file_chunk_content.sql`, `file_chunks.content` kolonunu kaldırır.
 
 ## 4. Docker network ve volume yapısı
 
@@ -363,7 +376,6 @@ Alanlar:
 - `id`
 - `chunkIndex`
 - `chunkName`
-- `content`
 - `tokenCount`
 - `file_id`
 - `createdAt`
@@ -374,6 +386,28 @@ Chunk kaydı bir file'a bağlıdır.
 File silindiğinde entity cascade ayarı database ilişkisini de etkiler.
 
 Backend ayrıca chunk dosyasını fiziksel olarak siler.
+
+Chunk text değeri yalnızca `/uploads/chunks` altındaki fiziksel dosyada tutulur.
+
+`file_chunks.content` kolonu kullanılmaz.
+
+Bu değişiklik Flyway tarafından aşağıdaki migration ile uygulanır:
+
+```sql
+ALTER TABLE file_chunks
+DROP COLUMN IF EXISTS content;
+```
+
+SQL dosyası:
+
+```text
+uctma/src/main/resources/db/migration/V2__remove_file_chunk_content.sql
+```
+
+Mevcut database için uygulama başladığında Flyway database'i version `1`
+olarak baseline eder ve ardından `V2` migration'ını çalıştırır.
+
+Migration öncesinde database yedeği alınmalıdır.
 
 ## 7. Authentication ve Authorization
 
@@ -1251,7 +1285,6 @@ Aşağıdaki işlevler kaynak kodda mevcut bir özellik olarak doğrulanmamışt
 - Queue progress bar
 - Audit log
 - Role yönetimi
-- Database migration sistemi
 - Otomatik end-to-end test suite
 - Otomatik Frontend unit test suite
 
