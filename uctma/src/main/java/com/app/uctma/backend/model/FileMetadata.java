@@ -41,6 +41,9 @@ public class FileMetadata {
     @Column(nullable = false)
     private FileStatus status;
 
+    @Column(name = "error_message", columnDefinition = "TEXT")
+    private String errorMessage;
+
     @Column(name = "max_tokens")
     private Integer maxTokens;
 

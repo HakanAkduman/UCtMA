@@ -17,6 +17,7 @@ public class FileUploadResDTO {
     private String originalFileName;
     private String fileType;
     private FileStatus status;
+    private String errorMessage;
     private Integer maxTokens;
     private LocalDateTime createdAt;
 }

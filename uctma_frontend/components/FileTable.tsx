@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FileItem } from "../lib/types";
 
 type FileTableProps = {
@@ -12,6 +13,8 @@ type FileTableProps = {
 // Bu component sadece dosya listesini ve butonları render eder.
 // API çağrıları parent'tan gelen callback'ler üzerinden çalıştırılır.
 export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDelete }: FileTableProps) {
+  const [expandedErrorFileId, setExpandedErrorFileId] = useState<number | null>(null);
+
   function statusLabel(status: FileItem["status"]) {
     return {
       PENDING: "Bekliyor",
@@ -44,16 +47,42 @@ export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDe
           {files.map((file) => <tr key={file.id} className="border-b">
             <td className="max-w-0 break-words p-4 align-top">
               {file.originalFileName}
-              {file.fileType === "URL" && (
+              {file.fileType && (
                 <span className="ml-2 rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                  URL
+                  {file.fileType}
                 </span>
               )}
             </td>
             <td className="break-words p-4 align-top">
-              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(file.status)}`}>
-                {statusLabel(file.status)}
-              </span>
+              {file.errorMessage?.trim() ? (
+                <>
+                  <button
+                    type="button"
+                    className={`inline-flex cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${statusClass(file.status)}`}
+                    aria-expanded={expandedErrorFileId === file.id}
+                    aria-controls={`file-error-${file.id}`}
+                    aria-label={`${statusLabel(file.status)}. Hata nedenini ${expandedErrorFileId === file.id ? "gizle" : "göster"}`}
+                    onClick={() => setExpandedErrorFileId(
+                      expandedErrorFileId === file.id ? null : file.id,
+                    )}
+                  >
+                    {statusLabel(file.status)}
+                  </button>
+                  <p
+                    id={`file-error-${file.id}`}
+                    hidden={expandedErrorFileId !== file.id}
+                    role="note"
+                    className="mt-2 whitespace-pre-wrap break-words text-xs text-red-700 dark:text-red-300"
+                  >
+                    <span className="font-semibold">Hata nedeni: </span>
+                    {file.errorMessage.trim()}
+                  </p>
+                </>
+              ) : (
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(file.status)}`}>
+                  {statusLabel(file.status)}
+                </span>
+              )}
             </td>
             <td className="p-4 align-top">
               <div className="flex flex-wrap gap-2">

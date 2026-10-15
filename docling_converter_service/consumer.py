@@ -16,6 +16,29 @@ RABBITMQ_HEARTBEAT_SECONDS = int(os.getenv("RABBITMQ_HEARTBEAT_SECONDS", 600))
 
 BACKEND_CALLBACK_URL = os.getenv("BACKEND_CALLBACK_URL")
 
+
+def format_user_error(error: Exception, file_path: str, original_file_name: str) -> str:
+    if isinstance(error, FileNotFoundError):
+        return "İşlenecek dosya bulunamadı. Dosyayı yeniden yükleyip tekrar deneyin."
+
+    if isinstance(error, requests.Timeout):
+        return "URL isteği zaman aşımına uğradı. Lütfen tekrar deneyin."
+
+    if isinstance(error, requests.HTTPError):
+        status_code = error.response.status_code if error.response is not None else None
+        if status_code is not None:
+            return f"URL sayfası HTTP {status_code} hatası döndürdü."
+        return "URL sayfası isteği başarısız oldu."
+
+    if isinstance(error, requests.RequestException):
+        return "URL sayfasına erişilemedi. Adresi kontrol edip tekrar deneyin."
+
+    message = str(error).strip()
+    if file_path:
+        message = message.replace(file_path, original_file_name or "dosya")
+    return message or "Dönüştürme sırasında beklenmeyen bir hata oluştu."
+
+
 def send_callback(payload: dict):
     try:
         res = requests.post(BACKEND_CALLBACK_URL, json=payload, timeout=60)
@@ -101,7 +124,11 @@ def callback(ch, method, properties, body):
             "status": "FAILED",
             "convertedText": None,
             "chunks": [],
-            "errorMessage": str(e)
+            "errorMessage": format_user_error(
+                e,
+                file_path,
+                data.get("originalFileName", ""),
+            )
         })
         if callback_sent or callback_is_permanent_error:
             acknowledge_message(ch, method.delivery_tag)

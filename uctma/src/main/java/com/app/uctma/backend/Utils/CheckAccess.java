@@ -20,9 +20,7 @@ public class CheckAccess {
     private final UserRepository userRepository;
 
     public FileMetadata userHasAccessToFile(Long fileId){
-        String currentUserMail = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userRepository.findByEmail(currentUserMail)
-                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        User user = checkUserValid();
 
         FileMetadata fileMetadata=fileMetadataRepository.findById(fileId).orElseThrow(()-> new RuntimeException("Dosya bulunamadı"));
 
@@ -32,9 +30,7 @@ public class CheckAccess {
         return fileMetadata;
     }
     public FileChunk userHasAccessToChunk(Long chunkId){
-        String currentUserMail = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userRepository.findByEmail(currentUserMail)
-                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        User user = checkUserValid();
 
         FileChunk fileChunk=fileChunkRepository.findById(chunkId).orElseThrow(()-> new RuntimeException("Dosya bulunamadı"));
 

@@ -12,6 +12,12 @@ services:
       - POSTGRES_DB=${DB_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 
   rabbitmq:
@@ -59,7 +65,8 @@ services:
       - RABBITMQ_EXCHANGE_FILE=${RABBITMQ_EXCHANGE_FILE}
       - RABBITMQ_ROUTING_KEY_FILE=${RABBITMQ_ROUTING_KEY_FILE}
     depends_on:
-      - postgres-db
+      postgres-db:
+        condition: service_healthy
 
 volumes:
   pgdata:

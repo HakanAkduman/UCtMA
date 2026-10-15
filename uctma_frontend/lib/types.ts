@@ -7,6 +7,7 @@ export type FileItem = {
   originalFileName: string;
   fileType: string;
   status: FileStatus;
+  errorMessage?: string | null;
   maxTokens: number | null;
   createdAt: string;
 };

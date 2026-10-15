@@ -86,6 +86,7 @@ public class FileServiceImpl implements FileService {
                 .originalFileName(savedMetadata.getOriginalFileName())
                 .fileType(savedMetadata.getFileType())
                 .status(savedMetadata.getStatus())
+                .errorMessage(savedMetadata.getErrorMessage())
                 .maxTokens(savedMetadata.getMaxTokens())
                 .createdAt(savedMetadata.getCreatedAt())
                 .build();
@@ -132,6 +133,7 @@ public class FileServiceImpl implements FileService {
                 .originalFileName(savedMetadata.getOriginalFileName())
                 .fileType(savedMetadata.getFileType())
                 .status(savedMetadata.getStatus())
+                .errorMessage(savedMetadata.getErrorMessage())
                 .maxTokens(savedMetadata.getMaxTokens())
                 .createdAt(savedMetadata.getCreatedAt())
                 .build();
@@ -210,6 +212,7 @@ public class FileServiceImpl implements FileService {
                            .originalFileName(fileMetadata.getOriginalFileName())
                            .fileType(fileMetadata.getFileType())
                            .status(fileMetadata.getStatus())
+                           .errorMessage(fileMetadata.getErrorMessage())
                            .maxTokens(fileMetadata.getMaxTokens())
                            .createdAt(fileMetadata.getCreatedAt()).build();
                 })).toList();
@@ -254,6 +257,7 @@ public class FileServiceImpl implements FileService {
         deleteDerivedFiles(fileMetadata);
 
         fileMetadata.setStatus(FileStatus.PENDING);
+        fileMetadata.setErrorMessage(null);
         if (maxTokens != null) {
             fileMetadata.setMaxTokens(maxTokens);
         }
@@ -292,6 +296,14 @@ public class FileServiceImpl implements FileService {
                 .orElseThrow(() -> new RuntimeException("Callback için dosya bulunamadı! ID: " + callbackDTO.getFileId()));
 
         fileMetadata.setStatus(callbackDTO.getStatus());
+        String callbackError = callbackDTO.getErrorMessage();
+        fileMetadata.setErrorMessage(
+                callbackDTO.getStatus() == FileStatus.FAILED
+                        && callbackError != null
+                        && !callbackError.isBlank()
+                        ? callbackError.trim()
+                        : null
+        );
 
         if (callbackDTO.getConvertedText() != null
                 && !callbackDTO.getConvertedText().isBlank()) {
