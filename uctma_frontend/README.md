@@ -2,9 +2,9 @@
 
 Bu klasör, backend'e dokunmadan çalışan basit Next.js + React + Tailwind arayüzüdür.
 
-Faz 1 kapsamı için proje dokümanına bakın:
+Faz 1 ve Faz 2 teknik dokümantasyonunun tamamı:
 
-- [`PHASE-1-DOCUMENTATION.md`](../PHASE-1-DOCUMENTATION.md)
+- [`UCTMA-TECHNICAL-DOCUMENTATION.md`](../UCTMA-TECHNICAL-DOCUMENTATION.md)
 
 ## Çalıştırma
 
@@ -28,6 +28,7 @@ Arayüz: http://localhost:3000
 - Kullanıcıları dialog içinde listeleme ve silme
 - Üst navbar üzerinden kullanıcı ve şifre dialogları
 - Dosya yükleme
+- Navbar üzerinden HTTP/HTTPS URL'lerini Markdown'a dönüştürme
 - Markdown veya Markdown + Chunk seçimi
 - Dosya listesi
 - Tekrar dönüştürme

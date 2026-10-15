@@ -7,12 +7,13 @@ type NavbarProps = {
   onPassword: () => void;
   onRegister: () => void;
   onUsers: () => void;
+  onUrlUpload: () => void;
   onLogout: () => void;
 };
 
 // Navbar yalnızca navigasyon ve aksiyon butonlarını gösterir.
 // Yetki kontrolü için backend'den gelen isAdmin bilgisi kullanılır.
-export function Navbar({ isAdmin, onPassword, onRegister, onUsers, onLogout }: NavbarProps) {
+export function Navbar({ isAdmin, onPassword, onRegister, onUsers, onUrlUpload, onLogout }: NavbarProps) {
   const { isDark, toggleTheme } = useTheme();
 
   return (
@@ -26,6 +27,7 @@ export function Navbar({ isAdmin, onPassword, onRegister, onUsers, onLogout }: N
           { isDark ? "☀️" : "🌙"}
         </button>
         <button className="button-secondary" onClick={onPassword}>Şifre değiştir</button>
+        <button className="button-secondary" onClick={onUrlUpload}>URL'den yükle</button>
         {isAdmin && <button className="button-secondary" onClick={onRegister}>Kullanıcı oluştur</button>}
         {isAdmin && <button className="button-secondary" onClick={onUsers}>Kullanıcılar</button>}
         <button className="button-secondary" onClick={onLogout}>Çıkış</button>

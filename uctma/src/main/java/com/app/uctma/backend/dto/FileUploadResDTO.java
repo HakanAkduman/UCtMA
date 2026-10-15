@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 public class FileUploadResDTO {
     private Long id;
     private String originalFileName;
+    private String fileType;
     private FileStatus status;
     private Integer maxTokens;
     private LocalDateTime createdAt;

@@ -10,6 +10,7 @@ import { Navbar } from "../components/Navbar";
 import { PasswordForm } from "../components/PasswordForm";
 import { RegisterForm } from "../components/RegisterForm";
 import { UsersDialog } from "../components/UsersDialog";
+import { UrlUploader } from "../components/UrlUploader";
 import { useAuth } from "../hooks/useAuth";
 import { useFiles } from "../hooks/useFiles";
 import { ChunkItem } from "../lib/types";
@@ -22,7 +23,7 @@ declare global {
   }
 }
 
-type Dialog = "register" | "password" | "chunks" | "users" | null;
+type Dialog = "register" | "password" | "chunks" | "users" | "url" | null;
 type MessageType = "success" | "error";
 
 export default function Home() {
@@ -132,6 +133,13 @@ export default function Home() {
     }, "Dosyanız işleme alındı.");
   }
 
+  async function uploadUrl(url: string, type: string, tokens: string) {
+    await run(async () => {
+      await authenticatedFiles.uploadUrl(url, type, tokens);
+      setDialog(null);
+    }, "URL işleme alındı.");
+  }
+
   // Dosyanın chunk'larını yükler ve ardından chunk dialog'unu açar.
   async function openChunks(fileId: number) {
     setSelectedFileId(fileId);
@@ -157,7 +165,7 @@ export default function Home() {
       {/* Navbar: şifre değiştirme ve logout herkese açıktır.
           Kullanıcı oluşturma ve kullanıcı listesi butonları isAdmin değerine
           göre Navbar component'i tarafından gösterilir veya gizlenir. */}
-      <Navbar isAdmin={auth.isAdmin} onPassword={() => setDialog("password")} onRegister={() => setDialog("register")} onUsers={() => void run(async () => { await authenticatedFiles.loadUsers(); setDialog("users"); })} onLogout={auth.logout} />
+      <Navbar isAdmin={auth.isAdmin} onPassword={() => setDialog("password")} onRegister={() => setDialog("register")} onUsers={() => void run(async () => { await authenticatedFiles.loadUsers(); setDialog("users"); })} onUrlUpload={() => setDialog("url")} onLogout={auth.logout} />
       {/* FileUploader yalnızca form görünümünü yönetir. Form gönderildiğinde
           dosya ve seçilen ayarlar upload fonksiyonuna callback ile gelir. */}
       <FileUploader
@@ -198,6 +206,7 @@ export default function Home() {
       {dialog === "password" && <PasswordForm required={auth.mustChangePassword} currentPassword={auth.password} newPassword={auth.newPassword} confirmPassword={auth.confirmPassword} busy={busy} onCurrentPasswordChange={auth.setPassword} onNewPasswordChange={auth.setNewPassword} onConfirmPasswordChange={auth.setConfirmPassword} onSubmit={changePassword} onClose={() => setDialog(null)} />}
       {dialog === "users" && <UsersDialog users={authenticatedFiles.users} busy={busy} onDelete={(email) => void run(() => authenticatedFiles.removeUser(email))} onClose={() => setDialog(null)} />}
       {dialog === "chunks" && selectedFileId !== null && <ChunksDialog chunks={selectedChunks} busy={busy} onDownload={(chunk) => void run(() => authenticatedFiles.download(`/file/chunks/${chunk.id}/download`, chunk.chunkName))} onDelete={(id) => void run(() => authenticatedFiles.removeChunk(selectedFileId, id))} onClose={() => setDialog(null)} />}
+      {dialog === "url" && <UrlUploader busy={busy} conversionType={conversionType} maxTokens={maxTokens} onConversionTypeChange={setConversionType} onMaxTokensChange={setMaxTokens} onSubmit={(url, type, tokens) => void uploadUrl(url, type, tokens)} onClose={() => setDialog(null)} />}
     </main>
   );
 }

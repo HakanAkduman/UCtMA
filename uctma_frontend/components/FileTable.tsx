@@ -42,7 +42,14 @@ export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDe
         </thead>
         <tbody>
           {files.map((file) => <tr key={file.id} className="border-b">
-            <td className="max-w-0 break-words p-4 align-top">{file.originalFileName}</td>
+            <td className="max-w-0 break-words p-4 align-top">
+              {file.originalFileName}
+              {file.fileType === "URL" && (
+                <span className="ml-2 rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                  URL
+                </span>
+              )}
+            </td>
             <td className="break-words p-4 align-top">
               <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(file.status)}`}>
                 {statusLabel(file.status)}

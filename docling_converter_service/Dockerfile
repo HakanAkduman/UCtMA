@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # Sistem bağımlılıkları (PDF, görsel ve OCR işleme için gerekli)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ca-certificates \
     libgomp1 \
     libpq-dev \
     ffmpeg \
@@ -24,6 +25,7 @@ RUN mkdir -p /app/models_cache
 
 # Docling / HuggingFace modellerinin indirileceği dizin
 ENV HF_HOME=/app/models_cache
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # HTTP API and RabbitMQ consumer run in the same service container.
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 & exec python consumer.py"]

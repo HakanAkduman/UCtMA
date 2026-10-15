@@ -4,7 +4,7 @@ import time
 
 import pika
 import requests
-from docling_processor import process_file_with_docling  # docling.py'den import ediyoruz
+from docling_processor import process_file_with_docling, process_url_with_docling
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
@@ -60,11 +60,33 @@ def callback(ch, method, properties, body):
     conversion_type = data.get("conversionType")
 
     max_tokens = data.get("maxTokens") or 400
+    file_type = data.get("fileType")
 
     print(f"\n[*] RabbitMQ'dan mesaj alındı -> File ID: {file_id}")
 
+    callback_sent, callback_is_permanent_error = send_callback({
+        "fileId": file_id,
+        "status": "PROCESSING",
+        "convertedText": None,
+        "chunks": [],
+        "errorMessage": None
+    })
+    if not callback_sent:
+        if callback_is_permanent_error:
+            acknowledge_message(ch, method.delivery_tag)
+        else:
+            reject_message(ch, method.delivery_tag)
+        return
+
     try:
-        result = process_file_with_docling(file_path, conversion_type, max_tokens)
+        if file_type == "URL":
+            result = process_url_with_docling(
+                file_path,
+                conversion_type,
+                max_tokens,
+            )
+        else:
+            result = process_file_with_docling(file_path, conversion_type, max_tokens)
         payload = {
             "fileId": file_id,
             "status": "COMPLETED",

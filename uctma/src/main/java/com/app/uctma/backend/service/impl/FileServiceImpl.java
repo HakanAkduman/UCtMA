@@ -19,6 +19,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -71,6 +73,7 @@ public class FileServiceImpl implements FileService {
                 .fileId(savedMetadata.getId())
                 .filePath(savedMetadata.getFilePath())
                 .originalFileName(savedMetadata.getOriginalFileName())
+                .fileType(savedMetadata.getFileType())
                 .conversionType(convertFileReqDTO.getConversionType())
                 .maxTokens(convertFileReqDTO.getMaxTokens())
                 .build();
@@ -81,15 +84,102 @@ public class FileServiceImpl implements FileService {
 
         return FileUploadResDTO.builder().id(savedMetadata.getId())
                 .originalFileName(savedMetadata.getOriginalFileName())
+                .fileType(savedMetadata.getFileType())
                 .status(savedMetadata.getStatus())
                 .maxTokens(savedMetadata.getMaxTokens())
                 .createdAt(savedMetadata.getCreatedAt())
                 .build();
     }
 
+    @Override
+    @Transactional
+    public FileUploadResDTO uploadUrlToConvert(UrlConvertReqDTO request) {
+        if (request == null) {
+            throw new RuntimeException("URL isteği boş olamaz.");
+        }
+        URI uri = validateHttpUrl(request.getUrl());
+
+        User user = checkAccessObj.checkUserValid();
+
+        ConversionType conversionType = request.getConversionType() == null
+                ? ConversionType.CONVERT
+                : request.getConversionType();
+        Integer maxTokens = request.getMaxTokens() == null ? 400 : request.getMaxTokens();
+        String originalFileName = createUrlFileName(uri);
+
+        FileMetadata fileMetadata = FileMetadata.builder()
+                .originalFileName(originalFileName)
+                .filePath(uri.toASCIIString())
+                .fileType("URL")
+                .status(FileStatus.PENDING)
+                .maxTokens(maxTokens)
+                .user(user)
+                .build();
+
+        FileMetadata savedMetadata = fileMetadataRepository.save(fileMetadata);
+    
+        rabbitFileMessageService.sendFileProcessingMessage(FileMessageDTO.builder()
+                .fileId(savedMetadata.getId())
+                .filePath(savedMetadata.getFilePath())
+                .originalFileName(savedMetadata.getOriginalFileName())
+                .fileType(savedMetadata.getFileType())
+                .conversionType(conversionType)
+                .maxTokens(maxTokens)
+                .build());
+
+        return FileUploadResDTO.builder()
+                .id(savedMetadata.getId())
+                .originalFileName(savedMetadata.getOriginalFileName())
+                .fileType(savedMetadata.getFileType())
+                .status(savedMetadata.getStatus())
+                .maxTokens(savedMetadata.getMaxTokens())
+                .createdAt(savedMetadata.getCreatedAt())
+                .build();
+    }
+
+    private URI validateHttpUrl(String url) {
+        if (url == null || url.isBlank() || url.length() > 2048) {
+            throw new RuntimeException("URL boş olamaz ve 2048 karakteri aşamaz.");
+        }
+
+        try {
+            URI uri = new URI(url.trim());
+            String scheme = uri.getScheme();
+            int allowedPort = "https".equalsIgnoreCase(scheme) ? 443 : 80;
+            if (scheme == null
+                    || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                    || uri.getHost() == null
+                    || uri.getUserInfo() != null
+                    || (uri.getPort() != -1 && uri.getPort() != allowedPort)) {
+                throw new RuntimeException(
+                        "Standart portları kullanan geçerli bir HTTP veya HTTPS URL girin."
+                );
+            }
+            return uri.normalize();
+        } catch (URISyntaxException exception) {
+            throw new RuntimeException("Geçerli bir HTTP veya HTTPS URL girin.", exception);
+        }
+    }
+
+    private String createUrlFileName(URI uri) {
+        String path = uri.getPath();
+        String lastSegment = path == null || path.isBlank()
+                ? "page"
+                : path.substring(path.lastIndexOf('/') + 1);
+        if (lastSegment.isBlank()) {
+            lastSegment = "page";
+        }
+        String safeName = (uri.getHost() + "_" + lastSegment)
+                .replaceAll("[^A-Za-z0-9._-]", "_");
+        if (safeName.length() > 100) {
+            safeName = safeName.substring(0, 100);
+        }
+        return safeName + ".html";
+    }
+
     private void validateFileExtension(String originalFileName) {
         if (originalFileName == null || originalFileName.isBlank()) {
-            throw new IllegalArgumentException("Dosya adı boş olamaz.");
+            throw new RuntimeException("Dosya adı boş olamaz.");
         }
 
         int extensionStart = originalFileName.lastIndexOf('.');
@@ -98,7 +188,7 @@ public class FileServiceImpl implements FileService {
                 : "";
 
         if (!SUPPORTED_FILE_EXTENSIONS.contains(extension)) {
-            throw new IllegalArgumentException(
+            throw new RuntimeException(
                     "Desteklenmeyen dosya formatı: "
                             + (extension.isBlank() ? "uzantısız" : extension)
                             + ". Desteklenen formatlar: "
@@ -118,6 +208,7 @@ public class FileServiceImpl implements FileService {
         return list.stream().map((fileMetadata -> {
                     return FileUploadResDTO.builder().id(fileMetadata.getId())
                            .originalFileName(fileMetadata.getOriginalFileName())
+                           .fileType(fileMetadata.getFileType())
                            .status(fileMetadata.getStatus())
                            .maxTokens(fileMetadata.getMaxTokens())
                            .createdAt(fileMetadata.getCreatedAt()).build();
@@ -139,7 +230,9 @@ public class FileServiceImpl implements FileService {
     public void deleteFile(Long fileId) {
         FileMetadata fileMetadata = checkAccessObj.userHasAccessToFile(fileId);
         deleteDerivedFiles(fileMetadata);
-        fileStorageService.deleteFile(fileMetadata.getFilePath());
+        if (!"URL".equals(fileMetadata.getFileType())) {
+            fileStorageService.deleteFile(fileMetadata.getFilePath());
+        }
         fileMetadataRepository.delete(fileMetadata);
     }
 
@@ -155,7 +248,9 @@ public class FileServiceImpl implements FileService {
     @Transactional
     public void reconvertFile(Long fileId, ConversionType conversionType, Integer maxTokens) {
         FileMetadata fileMetadata = checkAccessObj.userHasAccessToFile(fileId);
-        validateFileExtension(fileMetadata.getOriginalFileName());
+        if (!"URL".equals(fileMetadata.getFileType())) {
+            validateFileExtension(fileMetadata.getOriginalFileName());
+        }
         deleteDerivedFiles(fileMetadata);
 
         fileMetadata.setStatus(FileStatus.PENDING);
@@ -168,6 +263,7 @@ public class FileServiceImpl implements FileService {
                 .fileId(fileMetadata.getId())
                 .filePath(fileMetadata.getFilePath())
                 .originalFileName(fileMetadata.getOriginalFileName())
+                .fileType(fileMetadata.getFileType())
                 .conversionType(conversionType == null ? ConversionType.CONVERT : conversionType)
                 .maxTokens(fileMetadata.getMaxTokens())
                 .build());

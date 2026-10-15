@@ -1,8 +1,9 @@
-# UCTMA Phase 1 Teknik Dokümantasyonu
+# UCTMA Teknik Dokümantasyonu — Faz 1 ve Faz 2
 
 ## 1. Dokümanın amacı
 
-Bu doküman UCTMA projesinin Phase 1 sürümünü açıklar.
+Bu doküman UCTMA projesinin Faz 1 temel özelliklerini ve Faz 2 kapsamında
+eklenen URL'den Markdown'a dönüştürme özelliğini açıklar.
 
 Doküman aşağıdaki bileşenleri kapsar:
 
@@ -31,14 +32,16 @@ Dosya işleme asenkron yapılır.
 İş akışı aşağıdaki gibidir:
 
 1. Kullanıcı Frontend üzerinden login olur.
-2. Kullanıcı bir dosya seçer.
-3. Frontend dosyayı Backend'e gönderir.
-4. Backend dosyayı `/uploads` altında saklar.
-5. Backend dosya kaydını PostgreSQL'e ekler.
+2. Kullanıcı bilgisayarından bir dosya seçer veya herkese açık bir HTTP/HTTPS URL'si girer.
+3. Frontend dosyayı Backend'e yükler veya URL'yi Backend'e JSON olarak gönderir.
+4. Backend yüklenen dosyayı `/uploads` altında saklar; URL kayıtlarında `filePath`
+   alanında URL'yi saklar.
+5. Backend kaynak kaydını PostgreSQL'e ekler.
 6. Backend RabbitMQ'ya bir iş mesajı gönderir.
 7. Docling Converter Service mesajı RabbitMQ'dan alır.
-8. Converter dosyayı ortak `/uploads` volume'ünden okur.
-9. Converter dosyayı Markdown'a dönüştürür.
+8. Converter dosyayı ortak `/uploads` volume'ünden okur veya URL sayfasını HTTP(S)
+   üzerinden indirir.
+9. Converter kaynağı Markdown'a dönüştürür.
 10. Converter, istenmişse chunk üretir.
 11. Converter sonucu Backend callback endpoint'ine gönderir.
 12. Backend Markdown ve chunk kayıtlarını saklar.
@@ -216,6 +219,9 @@ Yeni database için `V1__create_initial_schema.sql` çalışır.
 
 `V2__remove_file_chunk_content.sql`, `file_chunks.content` kolonunu kaldırır.
 
+`V3__expand_file_path_for_urls.sql`, `files.file_path` kolonunu `TEXT` türüne
+genişletir; URL kaynakları 255 karakteri aşabildiğinden bu migration gereklidir.
+
 ## 4. Docker network ve volume yapısı
 
 Backend Compose ve Converter Compose aşağıdaki external network adını kullanır:
@@ -364,6 +370,10 @@ Alanlar:
 - `createdAt`
 
 Bir file bir user'a bağlıdır.
+
+`fileType` bir yüklenen dosyanın MIME türünü, URL kaynağında ise `URL` değerini
+tutar. URL kayıtlarında `filePath` dosya sistemi yolu değil, kaynak URL'dir.
+Bu kolon `V3` migration'ı ile `TEXT` olarak saklanır.
 
 Bir file birden fazla `FileChunk` kaydına sahip olabilir.
 
@@ -618,9 +628,51 @@ Upload response alanları:
 
 - `id`
 - `originalFileName`
+- `fileType`
 - `status`
 - `maxTokens`
 - `createdAt`
+
+### 9.2.1 URL'den dönüştürme
+
+Navbar'daki **URL'den yükle** işlemi, kullanıcıdan bir HTTP/HTTPS adresi alır
+ve aynı `CONVERT` veya `CONVERT_AND_CHUNK` seçeneklerini kullanır.
+
+Backend endpoint'i:
+
+```http
+POST /uctma/api/file/url
+Content-Type: application/json
+```
+
+Örnek istek:
+
+```json
+{
+  "url": "https://example.com/page",
+  "conversionType": "CONVERT",
+  "maxTokens": 400
+}
+```
+
+Backend yalnızca HTTP/HTTPS şemalarını, host içeren ve kullanıcı bilgisi
+taşımayan URL'leri kabul eder; standart dışı portları reddeder. URL uzunluğu
+2048 karakterle sınırlıdır. Kaynak dosya oluşturulmadığı için `filePath`
+doğrudan URL, `fileType` ise `URL` olarak kaydedilir. URL kaydı da normal dosya
+gibi kullanıcıya ait olur; listelenebilir, yeniden dönüştürülebilir ve
+silindiğinde türetilmiş Markdown/chunk dosyaları temizlenir.
+
+Converter URL'yi işlerken HTTP yönlendirmelerini en fazla 5 adım takip eder.
+Her hedefi tekrar doğrular ve loopback/özel ağ gibi global olmayan IP
+adreslerini reddeder. Yalnızca `text/html` ve `application/xhtml+xml` içerik
+türleri kabul edilir; gövde boyutu 10 MB ile sınırlıdır. İndirilen HTML geçici
+`.html` dosyasına yazılarak mevcut Docling dönüşüm akışına verilir ve geçici
+dosya işlem sonunda silinir. Sayfalar JavaScript çalıştırılmaz; yalnızca
+sunucunun döndürdüğü HTML işlenir.
+
+Üçüncü taraf siteler erişimi engelleyebilir, oturum açma isteyebilir veya
+geçerli TLS sertifika zinciri sunmayabilir. Bu durumlarda dönüşüm `FAILED`
+olur; TLS doğrulaması kapatılmamalıdır.
 
 ### 9.3 File listeleme
 
@@ -685,6 +737,9 @@ Backend aşağıdaki verileri siler:
 - Markdown fiziksel dosyası
 - Orijinal fiziksel dosya
 - File metadata kaydı
+
+URL kaydında yerel bir orijinal dosya bulunmadığından URL dosya yolu fiziksel
+olarak silinmez.
 
 ### 9.6 Orijinal file indirme
 
@@ -788,6 +843,7 @@ Backend'in gönderdiği mesaj `FileMessageDTO` alanlarını kullanır:
   "fileId": 10,
   "filePath": "/uploads/example.pdf",
   "originalFileName": "example.pdf",
+  "fileType": "application/pdf",
   "conversionType": "CONVERT_AND_CHUNK",
   "maxTokens": 400
 }
@@ -800,7 +856,8 @@ Converter bu alanları kullanır:
 - `conversionType`
 - `maxTokens`
 
-Converter `filePath` ile ortak `/uploads` volume'ündeki file'ı okur.
+`fileType` değeri `URL` ise `filePath` URL olarak değerlendirilir; diğer
+mesajlarda Converter `filePath` ile ortak `/uploads` volume'ündeki dosyayı okur.
 
 Consumer `prefetch_count=1` ile çalışır.
 
@@ -851,6 +908,13 @@ Backend upload öncesinde desteklenmeyen uzantıyı engeller.
 Consumer'a doğrudan desteklenmeyen bir file mesajı gönderilirse processing veya Docling hatası oluşabilir.
 
 Bu hata callback ile `FAILED` status olarak Backend'e bildirilebilir.
+
+### 12.5 URL kaynağı
+
+RabbitMQ mesajında `fileType: "URL"` olan işler `process_url_with_docling`
+fonksiyonuna yönlendirilir. Diğer mesajlar dosya işleme fonksiyonunu kullanır.
+URL için uzantı listesine `URL` eklenmez; URL bir dosya biçimi değil kaynak
+türüdür. İndirilen içerik geçici `.html` dosyası üzerinden Docling'e verilir.
 
 ## 13. Callback iş akışı
 
@@ -969,6 +1033,7 @@ uctma_frontend/
 │   ├── Navbar.tsx
 │   ├── PasswordForm.tsx
 │   ├── RegisterForm.tsx
+│   ├── UrlUploader.tsx
 │   └── UsersDialog.tsx
 ├── hooks/
 │   ├── useAuth.ts
@@ -1030,6 +1095,7 @@ HTTP başarısızsa veya `success=false` ise Frontend error gösterir.
 | Method | Endpoint | Yetki | Açıklama |
 |---|---|---|---|
 | `POST` | `/uctma/api/file/upload` | Authenticated | File yükleme |
+| `POST` | `/uctma/api/file/url` | Authenticated | URL'den Markdown/chunk işleme kuyruğuna ekleme |
 | `GET` | `/uctma/api/file` | Authenticated | User file listesi |
 | `POST` | `/uctma/api/file/{fileId}/convert` | Authenticated | Yeniden dönüştürme |
 | `DELETE` | `/uctma/api/file/{fileId}` | Authenticated | File silme |
@@ -1101,6 +1167,30 @@ Docling veya model katmanında tokenizer limitini aşan içerik uyarısı görü
 Bu mesaj tek başına Backend callback'inin başarısız olduğu anlamına gelmez.
 
 Sonuç status ve callback response birlikte kontrol edilmelidir.
+
+### 18.5 URL indirme hataları
+
+URL işlemi `FAILED` olursa Converter logundaki hata kaynağı ayırt edilmelidir:
+
+- `403 Forbidden`: Hedef site otomatik istekleri reddediyor veya erişim istiyor.
+- `SSLCertVerificationError`: TLS sertifikası ya da ara sertifika zinciri
+  istemcinin CA deposuyla doğrulanamıyor. `verify=False` ile doğrulama
+  kapatılmamalıdır.
+- İçerik türü/10 MB/yönlendirme hataları: URL işleyicisinin izin verdiği
+  sınırlar aşılmıştır.
+
+Converter image'inde `ca-certificates` paketi kurulur ve Requests için
+`REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt` ayarlanır. Dockerfile
+değişikliğinden sonra container yeniden build edilmelidir:
+
+```bash
+cd docling_converter_service
+docker compose up -d --build
+```
+
+Sistem CA paketinin bulunması, hedef sitenin eksik veya yanlış sertifika
+zincirini onarmaz. Böyle bir durumda site yöneticisinin tam zinciri sunması ya
+da kurumun resmi CA sertifikasının güvenli biçimde container'a eklenmesi gerekir.
 
 ## 19. Kurulum ve çalıştırma
 
@@ -1244,7 +1334,7 @@ Production ortamında HTTPS kullanılmalıdır.
 
 Swagger endpoint'leri production ortamında erişim politikası ile sınırlandırılmalıdır.
 
-## 23. Phase 1 kapsamı
+## 23. Faz 1 kapsamı
 
 Phase 1 içinde bulunan işlevler:
 
@@ -1272,7 +1362,7 @@ Phase 1 içinde bulunan işlevler:
 - RabbitMQ ile asenkron processing
 - PostgreSQL ile kalıcı metadata saklama
 
-## 24. Phase 1 dışında kalan veya mevcut sürümde bulunmayan işlevler
+## 24. Mevcut sürümde bulunmayan işlevler
 
 Aşağıdaki işlevler kaynak kodda mevcut bir özellik olarak doğrulanmamıştır:
 
@@ -1323,3 +1413,41 @@ Database volume'ü silinirse PostgreSQL verileri silinir.
 RabbitMQ volume'ü silinirse RabbitMQ kalıcı verileri silinir.
 
 Uploads volume'ü silinirse original file, Markdown file ve chunk file verileri silinir.
+
+## 26. Faz 2 — URL'den Markdown'a dönüştürme
+
+Faz 2, mevcut dosya yükleme ve asenkron dönüştürme yapısını değiştirmeden
+web sayfalarını URL ile işleme özelliği ekler.
+
+### 26.1 Kullanıcı akışı
+
+1. Kullanıcı giriş yaptıktan sonra navbar'daki **URL'den yükle** butonuna basar.
+2. HTTP/HTTPS sayfa adresini ve dönüşüm türünü seçer.
+3. Frontend `POST /uctma/api/file/url` isteğini JWT ile Backend'e gönderir.
+4. Backend URL kaynak kaydını `PENDING` durumunda oluşturur ve RabbitMQ'ya
+   `fileType: "URL"` alanlı mesaj bırakır.
+5. Consumer URL'yi güvenli indirme kontrollerinden geçirir; HTML'i mevcut
+   Docling pipeline'ına verir.
+6. Markdown/chunk sonucu mevcut callback üzerinden Backend'e kaydedilir.
+7. URL dosya listesinde URL etiketiyle gösterilir; Markdown indirme, chunk
+   görüntüleme, yeniden dönüştürme ve silme mevcut dosya işlemlerini kullanır.
+
+### 26.2 Veri ve sınırlar
+
+- `files.file_path`: dosya yüklemelerinde yerel yol, URL kaynaklarında tam URL.
+- `files.file_type`: yüklemelerde içerik türü, URL kaynaklarında `URL`.
+- `filePath` sütunu `V3` Flyway migration'ı ile `TEXT` olur.
+- URL uzunluğu en fazla 2048 karakterdir; HTTP/HTTPS dışındaki şemalar ve
+  standart dışı portlar kabul edilmez.
+- Worker yalnızca herkese açık HTML sayfalarını işler; özel ağ IP'lerini
+  engeller, yönlendirmeleri sınırlar ve HTML indirmesini 10 MB ile sınırlar.
+- Hedef sitenin erişim, robots veya TLS politikaları dönüşümü engelleyebilir;
+  uygulama TLS doğrulamasını devre dışı bırakmaz.
+
+### 26.3 İşletim
+
+URL desteği için converter bağımlılıklarında `requests` bulunur. Docker image
+sistem CA sertifikalarını yükler ve Requests'e sistem CA bundle yolunu bildirir.
+Bu ayar yalnızca container'ın güvenilir CA deposunu kullanmasını sağlar;
+hedef sunucunun eksik sertifika zincirini düzeltmez. Kod veya Dockerfile
+değişikliğinden sonra converter image'i yeniden build edilmelidir.

@@ -35,6 +35,16 @@ export function useFiles(token: string | null) {
     await loadFiles();
   }
 
+  async function uploadUrl(url: string, conversionType: string, maxTokens: string) {
+    if (!token) return;
+    await api("/file/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, conversionType, maxTokens: Number(maxTokens) }),
+    }, token);
+    await loadFiles();
+  }
+
   // Mevcut dosyanın dönüşümünü yeniden başlatır. Eski çıktı/chunk temizleme
   // işlemi backend'e aittir; frontend yalnızca isteği gönderir.
   async function reconvert(fileId: number, conversionType: string, maxTokens: string) {
@@ -100,5 +110,5 @@ export function useFiles(token: string | null) {
     if (token) await downloadApiFile(path, name, token);
   }
 
-  return { files, chunks, users, loadFiles, upload, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, registerUser, download };
+  return { files, chunks, users, loadFiles, upload, uploadUrl, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, registerUser, download };
 }

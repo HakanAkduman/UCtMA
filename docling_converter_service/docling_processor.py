@@ -1,6 +1,11 @@
+import ipaddress
 import os
+import socket
+import tempfile
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
+import requests
 from docling.datamodel import asr_model_specs
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
@@ -64,6 +69,9 @@ SUPPORTED_EXTENSIONS = (
     | DOCUMENT_EXTENSIONS
     | IMAGE_EXTENSIONS
 )
+
+MAX_URL_BYTES = 10 * 1024 * 1024
+MAX_URL_REDIRECTS = 5
 
 
 
@@ -279,3 +287,115 @@ def process_file_with_docling(
         "convertedText": converted_text,
         "chunks": extracted_chunks,
     }
+
+
+def _validate_public_http_url(url: str) -> None:
+
+    if not url or len(url) > 2048:
+        raise ValueError("URL boş olamaz ve 2048 karakteri aşamaz.")
+    parsed_url = urlsplit(url)
+    scheme = parsed_url.scheme.lower()
+    try:
+        port = parsed_url.port
+    except ValueError as error:
+        raise ValueError("URL içindeki port numarası geçersiz.") from error
+
+    if (
+        scheme not in {"http", "https"}
+        or not parsed_url.hostname
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or (port is not None and port != (443 if scheme == "https" else 80))
+    ):
+        raise ValueError(
+            "URL yalnızca standart portları kullanan kullanıcı bilgisiz HTTP/HTTPS adresi olabilir."
+        )
+
+    try:
+        addresses = socket.getaddrinfo(
+            parsed_url.hostname,
+            port or (443 if scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except (OSError, ValueError) as error:
+        raise ValueError(f"URL adresi çözümlenemedi: {parsed_url.hostname}") from error
+
+    if not addresses or any(
+        not ipaddress.ip_address(address[4][0]).is_global
+        for address in addresses
+    ):
+        raise ValueError("Yerel veya özel ağ adreslerine erişime izin verilmiyor.")
+
+
+def _download_url_html(url: str) -> bytes:
+    current_url = url
+    with requests.Session() as session:
+        session.trust_env = False
+        for redirect_count in range(MAX_URL_REDIRECTS + 1):
+            _validate_public_http_url(current_url)
+
+            with session.get(
+                current_url,
+                headers={"User-Agent": "UCTMA-Docling-Converter/1.0"},
+                stream=True,
+                timeout=(5, 30),
+                allow_redirects=False,
+            ) as response:
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("Location")
+                    if (
+                        response.status_code == 304
+                        or not location
+                        or redirect_count == MAX_URL_REDIRECTS
+                    ):
+                        raise ValueError("URL yönlendirmeleri geçersiz veya çok fazla.")
+                    current_url = urljoin(current_url, location)
+                    continue
+
+                response.raise_for_status()
+                content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+                if content_type not in {"text/html", "application/xhtml+xml"}:
+                    raise ValueError(
+                        f"URL bir HTML sayfası döndürmedi: {content_type or 'Content-Type belirtilmemiş'}"
+                    )
+
+                html_content = bytearray()
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    html_content.extend(chunk)
+                    if len(html_content) > MAX_URL_BYTES:
+                        raise ValueError("URL sayfası izin verilen 10 MB boyut sınırını aşıyor.")
+
+                return bytes(html_content)
+
+    raise ValueError("URL yönlendirmeleri çözümlenemedi.")
+
+
+def process_url_with_docling(
+    url: str,
+    conversion_type: str,
+    max_tokens: int = 400,
+) -> dict:
+
+    if conversion_type not in {"CONVERT", "CONVERT_AND_CHUNK"}:
+        raise ValueError(f"Desteklenmeyen işlem tipi: {conversion_type}")
+
+    html_content = _download_url_html(url)
+    temporary_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=".html",
+            delete=False,
+        ) as html_file:
+            temporary_path = html_file.name
+            html_file.write(html_content)
+
+        return process_file_with_docling(
+            file_path=temporary_path,
+            conversion_type=conversion_type,
+            max_tokens=max_tokens,
+        )
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)

@@ -28,7 +28,7 @@ public class FileMetadata {
     @Column(nullable = false)
     private String originalFileName;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String filePath;
 
     @Column

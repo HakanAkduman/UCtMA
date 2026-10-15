@@ -5,6 +5,7 @@ import com.app.uctma.backend.dto.ChunkListResDTO;
 import com.app.uctma.backend.dto.ConvertFileReqDTO;
 import com.app.uctma.backend.dto.FileProcessingCallbackReqDTO;
 import com.app.uctma.backend.dto.FileUploadResDTO;
+import com.app.uctma.backend.dto.UrlConvertReqDTO;
 import com.app.uctma.backend.model.ApiResponse;
 import com.app.uctma.backend.model.ConversionType;
 import com.app.uctma.backend.service.FileService;
@@ -28,6 +29,12 @@ public class FileController {
     @PostMapping(value = "/upload",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<FileUploadResDTO>> fileUpload (ConvertFileReqDTO convertFileReqDTO){
         FileUploadResDTO response = fileService.uploadFileToConvert(convertFileReqDTO);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PostMapping(value = "/url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<FileUploadResDTO>> convertUrl(@RequestBody UrlConvertReqDTO request) {
+        FileUploadResDTO response = fileService.uploadUrlToConvert(request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

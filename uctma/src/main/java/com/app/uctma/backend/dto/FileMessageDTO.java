@@ -14,6 +14,7 @@ public class FileMessageDTO {
     private Long fileId;
     private String filePath;
     private String originalFileName;
+    private String fileType;
     private ConversionType conversionType;
     private Integer maxTokens;
 }

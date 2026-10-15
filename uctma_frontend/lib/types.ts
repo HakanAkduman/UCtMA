@@ -5,6 +5,7 @@ export type FileStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 export type FileItem = {
   id: number;
   originalFileName: string;
+  fileType: string;
   status: FileStatus;
   maxTokens: number | null;
   createdAt: string;
