@@ -1,9 +1,10 @@
-# UCTMA Teknik Dokümantasyonu — Faz 1 ve Faz 2
+# UCTMA Teknik Dokümantasyonu
 
 ## 1. Dokümanın amacı
 
-Bu doküman UCTMA projesinin Faz 1 temel özelliklerini ve Faz 2 kapsamında
-eklenen URL'den Markdown'a dönüştürme özelliğini açıklar.
+Bu doküman UCTMA projesinin mevcut mimarisini, özelliklerini ve çalıştırma
+adımlarını açıklar. URL'den Markdown'a dönüştürme özelliği de mevcut sürüme
+dahildir.
 
 Doküman aşağıdaki bileşenleri kapsar:
 
@@ -48,6 +49,25 @@ Dosya işleme asenkron yapılır.
 13. Frontend dosya listesini yeniler.
 
 ## 3. Bileşenler
+
+### 3.0 Projeyi Docker ile başlatma
+
+Linux veya macOS'ta Docker ve Docker Compose kurulduktan sonra proje kök
+dizininden aşağıdaki komut çalıştırılabilir:
+
+```bash
+./start.sh
+```
+
+İlk çalıştırmada script, backend, converter ve frontend için eksik `.env`
+dosyalarını ilgili `.env.example` şablonlarından oluşturur; backend için JWT
+anahtarı üretir. Ardından PostgreSQL/RabbitMQ, backend, model prefetch,
+Docling converter ve frontend servislerini başlatır. Model volume'ü önceden
+yoksa oluşturulur. İlk Docker build'i ve model indirmeleri internet bağlantısı
+gerektirebilir. Prefetch başarısız olsa da başlatma devam eder; ilk dönüştürme
+isteğinde eksik modelleri indirmek için converter internet erişimini kullanır.
+İnternetsiz kullanım öncesinde gerekli modellerin prefetch edilmesi gerekir.
+Arayüz `http://localhost:3000` adresindedir.
 
 ### 3.1 Backend
 
@@ -120,7 +140,24 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 python consumer.py
 ```
 
-Converter model cache için `docling_models` volume'ünü kullanır.
+Converter model cache için Docker volume
+`docling_converter_service_docling_models`'ü `/app/models_cache` dizinine
+bağlar. Hugging Face ve Whisper cache'leri (`HF_HOME` ve `XDG_CACHE_HOME`) bu
+kalıcı dizini kullanır. `model-prefetch` servisi Docling'in varsayılan
+modellerini, RapidOCR modellerini ve kullanılan Whisper Base modelini önceden
+indirir:
+
+```bash
+cd uctma
+docker compose run --rm model-prefetch
+```
+
+PDF/görsel isteğinde RapidOCR model dosyaları belirtilen konumda yoksa
+converter bunları indirmeyi tekrar dener ve aynı kalıcı volume'e yazar. Diğer
+Docling modelleri cache'te yoksa Docling bunları kullanım sırasında indirmeyi
+dener. Bu nedenle internetsiz çalıştırmadan önce gerekli modeller
+prefetch edilmeli ve indirme işleminin başarılı olduğu doğrulanmalıdır.
+Volume, `docker compose down -v` veya ilgili volume'un silinmesiyle kaldırılır.
 
 ### 3.4 RabbitMQ
 
@@ -222,6 +259,14 @@ Yeni database için `V1__create_initial_schema.sql` çalışır.
 `V3__expand_file_path_for_urls.sql`, `files.file_path` kolonunu `TEXT` türüne
 genişletir; URL kaynakları 255 karakteri aşabildiğinden bu migration gereklidir.
 
+`V4__add_file_error_message.sql`, dönüştürme hatasının kullanıcıya
+gösterilebilmesi için `files.error_message` kolonunu ekler.
+
+Mevcut database için Flyway version `1` olarak baseline eder ve henüz
+uygulanmamış sonraki migration'ları sırayla çalıştırır. Backend başlatıldığında
+migration'lar otomatik uygulanır; Docker image build'i tek başına migration
+çalıştırmaz.
+
 ## 4. Docker network ve volume yapısı
 
 Backend Compose ve Converter Compose aşağıdaki external network adını kullanır:
@@ -251,7 +296,7 @@ Bu ortak volume aşağıdaki dosyaları içerir:
 Converter ayrıca model cache için şu volume'ü kullanır:
 
 ```text
-docling_models
+docling_converter_service_docling_models
 ```
 
 PostgreSQL volume'ü:
@@ -271,6 +316,10 @@ rabbitmq_data
 ### 5.1 Backend ortam değişkenleri
 
 Backend `uctma/.env` dosyasındaki değerleri kullanır.
+
+Zip veya temiz bir checkout'ta gerçek `.env` dosyaları bulunmayabilir.
+`./start.sh` gerekli `.env` dosyalarını `.env.example` şablonlarından üretir;
+elle başlatmada ilgili örnek dosyaları kopyalayıp ayarları kontrol edin.
 
 Başlıca değişkenler:
 
@@ -365,6 +414,7 @@ Alanlar:
 - `mdFilePath`
 - `fileType`
 - `status`
+- `error_message`
 - `maxTokens`
 - `user_id`
 - `createdAt`
@@ -415,9 +465,13 @@ uctma/src/main/resources/db/migration/V2__remove_file_chunk_content.sql
 ```
 
 Mevcut database için uygulama başladığında Flyway database'i version `1`
-olarak baseline eder ve ardından `V2` migration'ını çalıştırır.
+olarak baseline eder ve ardından henüz uygulanmamış `V2` ve sonraki
+migration'ları çalıştırır.
 
 Migration öncesinde database yedeği alınmalıdır.
+
+`files.error_message` kolonu `V4__add_file_error_message.sql` ile eklenir ve
+FAILED callback'inde Converter'ın gönderdiği hata açıklamasını saklar.
 
 ## 7. Authentication ve Authorization
 
@@ -565,6 +619,9 @@ Backend ve Converter aşağıdaki uzantıları desteklenen uzantı olarak tanım
 - `.xlsx`
 - `.txt`
 - `.md`
+- Ses: `.wav`, `.mp3`, `.m4a`, `.aac`, `.ogg`, `.flac`
+- Video: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`
+- Görsel: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp`, `.webp`
 
 Backend dosya adının son uzantısını kontrol eder.
 
@@ -581,7 +638,8 @@ Dosya içeriği uzantı ile uyumlu olmalıdır.
 
 Bir Python dosyasının adını `.pdf` yapmak dosyayı PDF'e dönüştürmez.
 
-Frontend desteklenmeyen uzantıyı queue işleminden önce reddeder.
+Dosya seçme alanı desteklenen uzantıları filtre olarak sunar. Asıl uzantı
+doğrulaması upload sırasında Backend tarafından yapılır.
 
 Backend de aynı uzantı kontrolünü tekrar yapar.
 
@@ -630,6 +688,7 @@ Upload response alanları:
 - `originalFileName`
 - `fileType`
 - `status`
+- `errorMessage`
 - `maxTokens`
 - `createdAt`
 
@@ -688,7 +747,9 @@ Response içinde aşağıdaki alanlar bulunur:
 
 - `id`
 - `originalFileName`
+- `fileType`
 - `status`
+- `errorMessage`
 - `maxTokens`
 - `createdAt`
 
@@ -718,7 +779,8 @@ Backend yeniden dönüştürme sırasında:
 5. Eski Markdown dosyasını siler.
 6. `mdFilePath` değerini temizler.
 7. File status değerini `PENDING` yapar.
-8. Yeni RabbitMQ mesajı gönderir.
+8. Varsa önceki `errorMessage` değerini temizler.
+9. Yeni RabbitMQ mesajı gönderir.
 
 Orijinal file silinmez.
 
@@ -771,21 +833,12 @@ Frontend bu endpoint'i tamamlanmış output için kullanmalıdır.
 
 Chunk üretimi yalnızca `CONVERT_AND_CHUNK` seçildiğinde istenir.
 
-Docling dosyalarında `HybridChunker` kullanılır.
+Docling belge modeline dönüştürülen tüm girdilerde `HybridChunker` kullanılır.
 
 `HybridChunker` için `maxTokens` değeri kullanılır.
 
-Plain text dosyalarında word-based chunking kullanılır.
-
-Plain text chunking şu uzantılarda kullanılır:
-
-- `.csv`
-- `.txt`
-- `.md`
-
-Plain text chunk size yaklaşık bir değerdir.
-
-Bu değer gerçek tokenizer sonucu değildir.
+Sayfa bilgisi bulunmayan ses/video gibi girdilerin `pageNumbers` listesi boş
+olabilir.
 
 ### 10.2 Chunk listeleme
 
@@ -865,9 +918,17 @@ Consumer `prefetch_count=1` ile çalışır.
 
 ### 12.1 Docling dosyaları
 
-`.pdf`, `.docx`, `.pptx`, `.html` ve `.xlsx` dosyaları Docling'e gönderilir.
+`.pdf`, `.docx`, `.pptx`, `.html`, `.xlsx`, görseller, ses ve video Docling'e
+gönderilir.
 
 Docling conversion sonucundan Markdown export edilir.
+
+PDF ve görsel OCR için RapidOCR'nin `torch` backend'i kullanılır. Gerekli
+RapidOCR dosyaları `/app/models_cache/RapidOcr` altında aranır; eksik dosyalar
+çevrimiçi ilk kullanımda bu kalıcı cache'e indirilir.
+
+Ses işleme Whisper Base modelini, video ise Docling'in video pipeline'ını
+kullanır.
 
 `CONVERT` işleminde chunk üretilmez.
 
@@ -881,15 +942,11 @@ Chunk response alanları:
 
 ### 12.2 Plain text dosyaları
 
-`.csv`, `.txt` ve `.md` dosyaları UTF-8 text olarak okunur.
-
-Bu dosyalar için Docling conversion çağrısı yapılmaz.
-
-`CONVERT` işleminde okunan text `convertedText` olur.
-
-`CONVERT_AND_CHUNK` işleminde text word-based chunk'lara ayrılır.
-
-Plain text chunk'larında `pageNumbers` boş list olarak gönderilir.
+`.csv` Docling'in CSV converter'ından geçirilir ve Markdown olarak export
+edilir. `.md` içeriği Docling'in Markdown parser'ına verilir. `.txt` içeriği
+HTML `<pre>` içinde Docling'e aktarılır; dönüştürülen metin olarak orijinal
+dosya içeriği korunur. `CONVERT_AND_CHUNK` durumunda bu belgeler de aynı
+`HybridChunker` ile chunk'lanır.
 
 ### 12.3 Dosya yoksa
 
@@ -966,7 +1023,11 @@ Backend callback aldığında:
 2. File status değerini callback status değerine ayarlar.
 3. `convertedText` boş değilse Markdown dosyası kaydeder.
 4. Chunk listesi boş değilse chunk dosyalarını ve database kayıtlarını oluşturur.
-5. Status `FAILED` ise error mesajını loglar.
+5. Status `FAILED` ise `errorMessage` değerini `files.error_message` alanına
+   kaydeder ve hatayı loglar.
+
+`PROCESSING` veya başarılı callback geldiğinde önceki `errorMessage` değeri
+temizlenir.
 
 Callback endpoint'i SecurityConfig içinde public'tir.
 
@@ -997,9 +1058,8 @@ Backend enum içinde şu status değerleri vardır:
 
 Upload ve reconvert sırasında Backend status değerini `PENDING` yapar.
 
-Mevcut Backend upload ve callback kodunda `PROCESSING` değerini set eden bir işlem bulunmamaktadır.
-
-Bu nedenle `PROCESSING` değeri modelde tanımlı olsa da mevcut normal akışta görülmeyebilir.
+RabbitMQ mesajı Converter tarafından alındığında, dönüşüm başlamadan önce
+`PROCESSING` callback'i gönderilir.
 
 Callback başarılıysa Converter `COMPLETED` gönderir.
 
@@ -1013,6 +1073,9 @@ Frontend bu status değerlerini aşağıdaki Türkçe etiketlerle gösterir:
 - `Başarısız`
 
 Frontend file listesini periyodik olarak yeniler.
+
+FAILED satırındaki durum etiketine tıklanınca dolu `errorMessage` açıklaması
+durumun altında açılır; tekrar tıklamak açıklamayı kapatır.
 
 ## 16. Frontend mimarisi
 
@@ -1200,10 +1263,15 @@ Gerekli araçlar:
 
 - Docker
 - Docker Compose
-- Java 21 destekli Docker build ortamı
-- Node.js 20 destekli Docker build ortamı
 
-Backend ve Converter aynı Docker network'üne bağlanmalıdır.
+Java ve Node.js, Docker image'lerinin build aşamalarında kullanılır; host
+makineye ayrıca kurulumları gerekmez. İlk image build'i ve kullanılmamış
+modellerin indirilmesi için internet erişimi gerekir.
+
+Backend ve Converter aynı Docker network'üne bağlanmalıdır. Proje kökündeki
+`./start.sh` Compose adımlarını sıralar ve `.env` dosyalarını örnek
+şablonlardan oluşturur. SMTP ile e-posta gönderimi kullanılacaksa
+`uctma/.env` içindeki SMTP ayarları ayrıca yapılandırılmalıdır.
 
 ### 19.2 Backend'i başlatma
 
@@ -1217,10 +1285,20 @@ Bu Compose projesi şu servisleri başlatır:
 - `postgres-db`
 - `rabbitmq`
 - `backend-service`
+- `model-prefetch` (tek seferlik model indirmesi; tamamlanınca kapanır)
 
 Backend Compose içinde `backend-service`, `postgres-db` servisine `depends_on` ile bağlıdır.
 
 RabbitMQ için Compose seviyesinde `depends_on` tanımı yoktur.
+Backend Compose'u elle başlatmadan önce harici model volume'ünü oluşturun:
+
+```bash
+docker volume create docling_converter_service_docling_models
+```
+
+İnternetsiz kurulum için model-prefetch tamamlanmış olmalı; ilk kullanımda
+eksik model indirmesi yapacak internet erişimi bulunmuyorsa dönüştürme
+başarısız olabilir.
 
 ### 19.3 Converter'ı başlatma
 
@@ -1334,9 +1412,9 @@ Production ortamında HTTPS kullanılmalıdır.
 
 Swagger endpoint'leri production ortamında erişim politikası ile sınırlandırılmalıdır.
 
-## 23. Faz 1 kapsamı
+## 23. Mevcut sürüm kapsamı
 
-Phase 1 içinde bulunan işlevler:
+Mevcut sürümde bulunan işlevler:
 
 - JWT login
 - Role tabanlı Authorization
@@ -1369,18 +1447,12 @@ Aşağıdaki işlevler kaynak kodda mevcut bir özellik olarak doğrulanmamışt
 - Pagination
 - File search
 - Status filter
-- UI içinde ayrıntılı per-file error görüntüleme
-- UI içinde retry butonu
 - Upload progress bar
 - Queue progress bar
 - Audit log
-- Role yönetimi
+- Kullanıcı rolünü sonradan değiştirme
 - Otomatik end-to-end test suite
 - Otomatik Frontend unit test suite
-
-`PROCESSING` status enum içinde bulunur.
-
-Mevcut upload ve callback akışında bu status değerini atayan aktif kod bulunmamaktadır.
 
 ## 25. Bakım kuralları
 
@@ -1414,10 +1486,10 @@ RabbitMQ volume'ü silinirse RabbitMQ kalıcı verileri silinir.
 
 Uploads volume'ü silinirse original file, Markdown file ve chunk file verileri silinir.
 
-## 26. Faz 2 — URL'den Markdown'a dönüştürme
+## 26. URL'den Markdown'a dönüştürme
 
-Faz 2, mevcut dosya yükleme ve asenkron dönüştürme yapısını değiştirmeden
-web sayfalarını URL ile işleme özelliği ekler.
+URL'den dönüştürme, mevcut dosya yükleme ve asenkron dönüştürme akışıyla
+birlikte çalışır.
 
 ### 26.1 Kullanıcı akışı
 

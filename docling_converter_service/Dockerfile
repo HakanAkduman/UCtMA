@@ -25,7 +25,8 @@ RUN mkdir -p /app/models_cache
 
 # Docling / HuggingFace modellerinin indirileceği dizin
 ENV HF_HOME=/app/models_cache
+ENV XDG_CACHE_HOME=/app/models_cache
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # HTTP API and RabbitMQ consumer run in the same service container.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 & exec python consumer.py"]
+CMD ["sh", "/app/docker-entrypoint.sh"]

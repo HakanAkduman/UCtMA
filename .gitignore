@@ -1,0 +1,9 @@
+# Local environment files may contain credentials.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Keep example templates tracked.
+!.env.example
+!**/.env.example

@@ -18,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -79,7 +81,7 @@ public class FileServiceImpl implements FileService {
                 .build();
 
         // we leave message to rabbit mq
-        rabbitFileMessageService.sendFileProcessingMessage(fileMessageDTO);
+        sendFileProcessingMessageAfterCommit(fileMessageDTO);
 
 
         return FileUploadResDTO.builder().id(savedMetadata.getId())
@@ -119,7 +121,7 @@ public class FileServiceImpl implements FileService {
 
         FileMetadata savedMetadata = fileMetadataRepository.save(fileMetadata);
     
-        rabbitFileMessageService.sendFileProcessingMessage(FileMessageDTO.builder()
+        sendFileProcessingMessageAfterCommit(FileMessageDTO.builder()
                 .fileId(savedMetadata.getId())
                 .filePath(savedMetadata.getFilePath())
                 .originalFileName(savedMetadata.getOriginalFileName())
@@ -177,6 +179,27 @@ public class FileServiceImpl implements FileService {
             safeName = safeName.substring(0, 100);
         }
         return safeName + ".html";
+    }
+
+
+    // bu fonksyiona URL lerin henüz metadata kaydı tam atılmamışken geriye callback ile statusunu
+    // proccessing durumuna geçirmek istediğinde gelen race condition için ihtiyaç duyuldu.
+    // ---AI yorumu---
+    // Dosya metadata'sı commit edilmeden RabbitMQ mesajı tüketilirse,
+    // consumer'ın gönderdiği PROCESSING callback'i kaydı bulamayabilir.
+    // Mesajı transaction commit'inden sonra göndererek bu yarış durumunu önler.
+    private void sendFileProcessingMessageAfterCommit(FileMessageDTO message) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            rabbitFileMessageService.sendFileProcessingMessage(message);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                rabbitFileMessageService.sendFileProcessingMessage(message);
+            }
+        });
     }
 
     private void validateFileExtension(String originalFileName) {
@@ -263,7 +286,7 @@ public class FileServiceImpl implements FileService {
         }
         fileMetadataRepository.save(fileMetadata);
 
-        rabbitFileMessageService.sendFileProcessingMessage(FileMessageDTO.builder()
+        sendFileProcessingMessageAfterCommit(FileMessageDTO.builder()
                 .fileId(fileMetadata.getId())
                 .filePath(fileMetadata.getFilePath())
                 .originalFileName(fileMetadata.getOriginalFileName())

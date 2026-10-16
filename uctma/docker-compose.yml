@@ -75,10 +75,16 @@ services:
       context: ../docling_converter_service
       dockerfile: Dockerfile
     image: uctma_docling_prefetch:latest
-    command: sh -c "docling-tools models download rapidocr --rapidocr-backend-lang torch:ch -o /app/models_cache"
+    command:
+      - sh
+      - -c
+      - >-
+        docling-tools models download -o /app/models_cache
+        && docling-tools models download rapidocr --rapidocr-backend-lang torch:ch -o /app/models_cache
+        && docling-tools models download whisper_base -o /app/models_cache/whisper
     environment:
       - HF_HOME=/app/models_cache
-      - DOCLING_ARTIFACTS_PATH=/app/models_cache
+      - XDG_CACHE_HOME=/app/models_cache
     volumes:
       - docling_models:/app/models_cache
     restart: 'no'
@@ -89,7 +95,8 @@ volumes:
   uploads:
     name: uctma_uploads
   docling_models:
-    name: uctma_docling_models
+    external: true
+    name: docling_converter_service_docling_models
 
 networks:
   default:

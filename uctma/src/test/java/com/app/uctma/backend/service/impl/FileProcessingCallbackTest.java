@@ -1,24 +1,31 @@
 package com.app.uctma.backend.service.impl;
 
 import com.app.uctma.backend.Utils.CheckAccess;
+import com.app.uctma.backend.dto.FileMessageDTO;
 import com.app.uctma.backend.dto.FileProcessingCallbackReqDTO;
+import com.app.uctma.backend.dto.UrlConvertReqDTO;
 import com.app.uctma.backend.model.ConversionType;
 import com.app.uctma.backend.model.FileMetadata;
 import com.app.uctma.backend.model.FileStatus;
+import com.app.uctma.backend.model.User;
 import com.app.uctma.backend.repository.FileChunkRepository;
 import com.app.uctma.backend.repository.FileMetadataRepository;
 import com.app.uctma.backend.service.FileStorageService;
 import com.app.uctma.backend.service.RabbitFileMessageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class FileProcessingCallbackTest {
@@ -26,6 +33,7 @@ class FileProcessingCallbackTest {
     private FileMetadataRepository fileMetadataRepository;
     private FileChunkRepository fileChunkRepository;
     private CheckAccess checkAccess;
+    private RabbitFileMessageService rabbitFileMessageService;
     private FileServiceImpl fileService;
 
     @BeforeEach
@@ -33,11 +41,12 @@ class FileProcessingCallbackTest {
         fileMetadataRepository = mock(FileMetadataRepository.class);
         fileChunkRepository = mock(FileChunkRepository.class);
         checkAccess = mock(CheckAccess.class);
+        rabbitFileMessageService = mock(RabbitFileMessageService.class);
         fileService = new FileServiceImpl(
                 fileMetadataRepository,
                 mock(FileStorageService.class),
                 fileChunkRepository,
-                mock(RabbitFileMessageService.class),
+                rabbitFileMessageService,
                 checkAccess
         );
     }
@@ -87,6 +96,67 @@ class FileProcessingCallbackTest {
         assertEquals(FileStatus.PENDING, fileMetadata.getStatus());
         assertNull(fileMetadata.getErrorMessage());
         verify(fileMetadataRepository).save(fileMetadata);
+    }
+
+    @Test
+    void reconvertPublishesMessageOnlyAfterTransactionCommit() {
+        FileMetadata fileMetadata = metadataWithId(16L);
+        when(checkAccess.userHasAccessToFile(16L)).thenReturn(fileMetadata);
+        when(fileChunkRepository.findByFileMetadataIdOrderByChunkIndexAsc(16L))
+                .thenReturn(List.of());
+        TransactionSynchronizationManager.initSynchronization();
+
+        try {
+            fileService.reconvertFile(16L, ConversionType.CONVERT, null);
+
+            verifyNoInteractions(rabbitFileMessageService);
+
+            for (TransactionSynchronization synchronization
+                    : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+
+            verify(rabbitFileMessageService).sendFileProcessingMessage(
+                    org.mockito.ArgumentMatchers.any(FileMessageDTO.class)
+            );
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void urlUploadPublishesMessageOnlyAfterMetadataCommit() {
+        when(checkAccess.checkUserValid()).thenReturn(User.builder().build());
+        when(fileMetadataRepository.save(any(FileMetadata.class))).thenAnswer(invocation -> {
+            FileMetadata metadata = invocation.getArgument(0);
+            metadata.setId(88L);
+            return metadata;
+        });
+        TransactionSynchronizationManager.initSynchronization();
+
+        try {
+            fileService.uploadUrlToConvert(UrlConvertReqDTO.builder()
+                    .url("https://www.deu.edu.tr/")
+                    .conversionType(ConversionType.CONVERT_AND_CHUNK)
+                    .maxTokens(400)
+                    .build());
+
+            verifyNoInteractions(rabbitFileMessageService);
+
+            for (TransactionSynchronization synchronization
+                    : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+
+            verify(rabbitFileMessageService).sendFileProcessingMessage(
+                    org.mockito.ArgumentMatchers.argThat(message ->
+                            message.getFileId().equals(88L)
+                                    && "URL".equals(message.getFileType())
+                    )
+            );
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

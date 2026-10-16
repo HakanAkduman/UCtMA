@@ -1,7 +1,10 @@
 import ipaddress
 import os
 import socket
+import subprocess
 import tempfile
+import html
+import threading
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -10,11 +13,15 @@ from docling.datamodel import asr_model_specs
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
     AsrPipelineOptions,
+    PdfPipelineOptions,
+    RapidOcrOptions,
     VideoPipelineOptions,
 )
 from docling.document_converter import (
     AudioFormatOption,
     DocumentConverter,
+    ImageFormatOption,
+    PdfFormatOption,
     VideoFormatOption,
 )
 from docling.pipeline.asr_pipeline import AsrPipeline
@@ -73,13 +80,77 @@ SUPPORTED_EXTENSIONS = (
 MAX_URL_BYTES = 10 * 1024 * 1024
 MAX_URL_REDIRECTS = 5
 
+MODEL_CACHE_DIR = Path(os.getenv("HF_HOME", "/app/models_cache"))
+RAPIDOCR_CACHE_DIR = MODEL_CACHE_DIR / "RapidOcr"
+RAPIDOCR_MODEL_FILES = {
+    "det_model_path": "PP-OCRv6_det_small.pth",
+    "cls_model_path": "ch_ppocr_mobile_v2.0_cls_mobile.pth",
+    "rec_model_path": "PP-OCRv6_rec_small.pth",
+    "rec_keys_path": "ppocrv6_dict.txt",
+}
+_RAPIDOCR_DOWNLOAD_LOCK = threading.Lock()
 
+
+def _ensure_rapidocr_models() -> None:
+    with _RAPIDOCR_DOWNLOAD_LOCK:
+        missing_paths = [
+            RAPIDOCR_CACHE_DIR / filename
+            for filename in RAPIDOCR_MODEL_FILES.values()
+            if not (RAPIDOCR_CACHE_DIR / filename).is_file()
+        ]
+        if not missing_paths:
+            return
+
+        print(
+            "[MODELS] RapidOCR artifacts are missing from the persistent cache; "
+            "downloading them now."
+        )
+        result = subprocess.run(
+            [
+                "docling-tools",
+                "models",
+                "download",
+                "rapidocr",
+                "--rapidocr-backend-lang",
+                "torch:ch",
+                "-o",
+                str(MODEL_CACHE_DIR),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            details = (result.stderr or result.stdout).strip()
+            raise RuntimeError(
+                "RapidOCR model download failed. Check internet connectivity "
+                f"and write access to {MODEL_CACHE_DIR}. {details}"
+            )
+
+        remaining_paths = [
+            path for path in missing_paths if not path.is_file()
+        ]
+        if remaining_paths:
+            missing = ", ".join(str(path) for path in remaining_paths)
+            raise RuntimeError(
+                f"RapidOCR download completed but required files are still missing: {missing}"
+            )
+
+
+rapid_ocr_options = RapidOcrOptions(
+    backend="torch",
+    lang=["ch"],
+    model_size="small",
+    **{
+        option_name: str(RAPIDOCR_CACHE_DIR / filename)
+        for option_name, filename in RAPIDOCR_MODEL_FILES.items()
+    },
+)
+pdf_pipeline_options = PdfPipelineOptions(ocr_options=rapid_ocr_options)
 
 # DOCLING CONVERTER YAPILANDIRMASI
 
 # Ses transkripsiyonu için Whisper modelini seçiyoruz.
-# WHISPER_BASE, ilk aşamada kaynak tüketimi açısından
-# daha makul bir başlangıç tercihidir.
 asr_options = AsrPipelineOptions()
 asr_options.asr_options = asr_model_specs.WHISPER_BASE
 
@@ -90,6 +161,12 @@ video_options = VideoPipelineOptions()
 # video dosyalarını işleyebiliyoruz.
 converter = DocumentConverter(
     format_options={
+        InputFormat.PDF: PdfFormatOption(
+            pipeline_options=pdf_pipeline_options,
+        ),
+        InputFormat.IMAGE: ImageFormatOption(
+            pipeline_options=pdf_pipeline_options,
+        ),
         InputFormat.AUDIO: AudioFormatOption(
             pipeline_cls=AsrPipeline,
             pipeline_options=asr_options,
@@ -99,38 +176,6 @@ converter = DocumentConverter(
         ),
     }
 )
-
-
-# METİN PARÇALAMA
-
-def _chunk_markdown(
-    markdown_text: str,
-    max_tokens: int = 400,
-) -> list[dict]:
-    """
-    Düz metin dosyalarını basitçe parçalara ayırır.
-
-    Not:
-    Buradaki max_tokens parametresi gerçek tokenizer token sayısını
-    değil, yaklaşık olarak token sayısını belirler.
-    """
-
-    words = markdown_text.split()
-    chunk_size = max_tokens or 400
-
-    chunks = []
-
-    for index, start in enumerate(range(0, len(words), chunk_size)):
-        chunk_text = " ".join(words[start:start + chunk_size])
-
-        chunks.append({
-            "chunkIndex": index,
-            "text": chunk_text,
-            "pageNumbers": [],
-        })
-
-    return chunks
-
 
 # DOCLING CHUNK OLUŞTURMA
 
@@ -186,28 +231,7 @@ def process_file_with_docling(
     conversion_type: str,
     max_tokens: int = 400,
 ) -> dict:
-    """
-    Dosyayı Docling ile işler.
 
-    Desteklenen işlemler:
-        CONVERT
-            Dosyayı Markdown metnine dönüştürür.
-
-        CONVERT_AND_CHUNK
-            Dosyayı Markdown'a dönüştürür ve chunk'lara ayırır.
-
-    Desteklenen dosyalar:
-        Belgeler: PDF, DOCX, PPTX, HTML, XLSX
-        Metin: CSV, TXT, MD
-        Ses: WAV, MP3, M4A, AAC, OGG, FLAC
-        Video: MP4, AVI, MOV, MKV, WEBM
-
-    Dönen sonuç:
-        {
-            "convertedText": "...",
-            "chunks": [...]
-        }
-    """
 
     # Dosya mevcut mu?
     if not os.path.isfile(file_path):
@@ -233,27 +257,81 @@ def process_file_with_docling(
             f"Desteklenmeyen dosya formatı: {extension}"
         )
 
-    # Düz metin dosyalarını doğrudan oku.
-    # CSV, TXT ve Markdown için Docling kullanmak zorunda değiliz.
-    if extension in PLAIN_TEXT_EXTENSIONS:
-        with open(
-            file_path,
-            "r",
-            encoding="utf-8-sig",
-        ) as text_file:
-            converted_text = text_file.read()
+    if extension == ".pdf" or extension in IMAGE_EXTENSIONS:
+        _ensure_rapidocr_models()
 
-        if conversion_type == "CONVERT":
-            chunks = []
-        else:
-            chunks = _chunk_markdown(
-                converted_text,
-                max_tokens,
+    # Düz metin dosyalarını diğerlerinden farklı bir şekilde md oluşturuyoruz.
+    if extension in PLAIN_TEXT_EXTENSIONS:
+
+        # CSV: Docling'in kendi CSV backend'ini kullan.
+        if extension == ".csv":
+
+            conversion_result = converter.convert(
+                Path(file_path)
             )
+
+            document = conversion_result.document
+
+            converted_text = document.export_to_markdown()
+
+        else:
+            # TXT ve Markdown dosyalarının içeriğini oku.
+            with open(
+                file_path,
+                "r",
+                encoding="utf-8-sig",
+            ) as text_file:
+                original_text = text_file.read()
+
+            if extension == ".md":
+                # Markdown içeriğini doğrudan Docling'e aktar.
+                conversion_result = converter.convert_string(
+                    content=original_text,
+                    format=InputFormat.MD,
+                    name=Path(file_path).name,
+                )
+
+                document = conversion_result.document
+
+                converted_text = document.export_to_markdown()
+
+            else:
+                # TXT için içeriği HTML <pre> içerisinde koru.
+                # html.escape, metindeki karakterlerin HTML
+                # etiketi olarak yorumlanmasını önler.
+                html_content = (
+                    "<html><body><pre>"
+                    + html.escape(original_text)
+                    + "</pre></body></html>"
+                )
+
+                conversion_result = converter.convert_string(
+                    content=html_content,
+                    format=InputFormat.HTML,
+                    name=Path(file_path).stem,
+                )
+
+                document = conversion_result.document
+
+                # TXT dosyasında orijinal metni koru.
+                converted_text = original_text
+
+        # Yalnızca dönüştürme isteniyorsa chunk oluşturma.
+        if conversion_type == "CONVERT":
+            return {
+                "convertedText": converted_text,
+                "chunks": [],
+            }
+
+        # Bütün metin formatlarında aynı chunklama fonksiyonunu kullan.
+        extracted_chunks = _chunk_document(
+            document,
+            max_tokens,
+        )
 
         return {
             "convertedText": converted_text,
-            "chunks": chunks,
+            "chunks": extracted_chunks,
         }
 
     # PDF, Office belgeleri, ses ve video dosyalarını işle.
