@@ -18,7 +18,10 @@ cd ../uctma_frontend
 docker compose up --build
 ```
 
-Arayüz: http://localhost:3000
+`FRONTEND_PORT` değişkeni frontend'in hem container içinde dinlediği hem de host
+makinede yayımladığı portu belirler. `uctma_frontend/.env` dosyasında
+`FRONTEND_PORT=3000` olarak ayarlanabilir; belirtilmezse varsayılan değer `3000`'dir.
+Arayüze `http://localhost:<FRONTEND_PORT>` adresinden erişilir.
 
 ## Şu an neler var?
 
