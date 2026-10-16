@@ -68,11 +68,28 @@ services:
       postgres-db:
         condition: service_healthy
 
+  # One-shot model prefetch service: use this to populate the persistent models volume
+  # Run with: docker compose run --rm model-prefetch
+  model-prefetch:
+    build:
+      context: ../docling_converter_service
+      dockerfile: Dockerfile
+    image: uctma_docling_prefetch:latest
+    command: sh -c "docling-tools models download rapidocr --rapidocr-backend-lang torch:ch -o /app/models_cache"
+    environment:
+      - HF_HOME=/app/models_cache
+      - DOCLING_ARTIFACTS_PATH=/app/models_cache
+    volumes:
+      - docling_models:/app/models_cache
+    restart: 'no'
+
 volumes:
   pgdata:
   rabbitmq_data:
   uploads:
     name: uctma_uploads
+  docling_models:
+    name: uctma_docling_models
 
 networks:
   default:
