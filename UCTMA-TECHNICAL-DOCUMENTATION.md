@@ -52,24 +52,36 @@ Dosya işleme asenkron yapılır.
 
 ### 3.0 Projeyi Docker ile başlatma
 
-Linux veya macOS'ta Docker ve Docker Compose kurulduktan sonra proje kök
-dizininden aşağıdaki komut çalıştırılabilir:
+Linux veya macOS'ta proje kök dizininden aşağıdaki komut çalıştırılabilir:
 
 ```bash
 ./start.sh
 ```
 
+Docker Engine/Compose Linux'ta kurulu değilse script Ubuntu veya Debian'da
+kurulumu onay ister ve Docker'ın resmi deposundan gerçekleştirir; yönetici
+(`sudo`) izni ve internet bağlantısı gerekir. macOS'ta Homebrew varsa Docker
+Desktop'ı kurup başlatmayı dener; Docker Desktop'ın ilk kullanım onaylarının
+tamamlanması gerekebilir. Diğer Linux dağıtımlarında ve işletim sistemlerinde
+Docker Engine/Compose elle kurulmalıdır. Script çalışan Docker daemon'ını da
+kontrol eder ve Linux'ta başlatmayı dener.
+
 İlk çalıştırmada script, backend, converter ve frontend için eksik `.env`
 dosyalarını ilgili `.env.example` şablonlarından oluşturur; JWT anahtarı, ilk
-admin parolası ve backend/converter arasında ortak callback sırrı üretir. İlk
-admin bilgileri `uctma/.env` dosyasına yazılır; callback sırrı iki servisin
-`.env` dosyasında eşit tutulur. Ardından PostgreSQL/RabbitMQ, backend, model
-prefetch, Docling converter ve frontend servislerini başlatır. Model volume'ü
-önceden yoksa oluşturulur. İlk Docker build'i ve model indirmeleri internet
-bağlantısı gerektirebilir. Prefetch başarısız olsa da başlatma devam eder; ilk
-dönüştürme isteğinde eksik modelleri indirmek için converter internet erişimini
-kullanır. İnternetsiz kullanım öncesinde gerekli modellerin prefetch edilmesi
-gerekir.
+admin parolası, veritabanı parolası ve backend/converter arasında ortak callback
+sırrı üretir. İlk admin e-posta adresi ve parolası `uctma/.env` dosyasına
+yazılır; callback sırrı iki servisin `.env` dosyasında eşit tutulur. Ardından
+PostgreSQL/RabbitMQ, backend, model prefetch, Docling converter ve frontend
+servislerini başlatır. Model volume'ü önceden yoksa oluşturulur. İlk Docker
+build'i ve model indirmeleri internet bağlantısı gerektirebilir. Prefetch
+başarısız olsa da başlatma devam eder; ilk dönüştürme isteğinde eksik modelleri
+indirmek için converter internet erişimini kullanır. İnternetsiz kullanım
+öncesinde gerekli modellerin prefetch edilmesi gerekir.
+
+PostgreSQL volume'ü daha önce farklı bir `DB_PASSWORD` ile başlatılmışsa
+PostgreSQL image'i yeni environment değerini kendiliğinden uygulamaz. Script,
+veri volume'ünü silmeden mevcut database rol parolasını `uctma/.env` ile
+eşleştirir; mevcut `DB_NAME` ve `DB_USERNAME` değerleri korunmalıdır.
 
 Compose ile host'a yayımlanan servis portları yalnızca `127.0.0.1` arayüzüne
 bağlanır; servisler birbirleriyle `uctma_default` Docker ağı üzerinden iletişim
@@ -1490,7 +1502,9 @@ Backend ve Converter aynı Docker network'üne bağlanmalıdır. Proje kökünde
 Compose servislerini elle başlatırken backend ve converter `.env` dosyalarına
 aynı, en az 32 karakterli `CALLBACK_SHARED_SECRET` değeri yazılmalıdır.
 `BOOTSTRAP_ADMIN_EMAIL` ve `BOOTSTRAP_ADMIN_PASSWORD` birlikte
-yapılandırılmalıdır; ikisi de boş bırakılırsa admin bootstrap atlanır. Örnek
+yapılandırılmalıdır; ikisi de boş bırakılırsa admin bootstrap atlanır. `./start.sh`
+boş ilk admin parolasını ve varsayılan veritabanı parolasını güvenli rastgele
+değerlerle doldurur. Örnek
 değerler (`GENERATED_BY_START_SH`) elle başlatma için kullanılabilir secret
 değildir. Bu ayarları otomatik ve tutarlı oluşturmak için proje kökünden
 `./start.sh` kullanılması önerilir.
