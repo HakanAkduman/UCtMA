@@ -274,6 +274,10 @@ public class FileServiceImpl implements FileService {
     @Transactional
     public void reconvertFile(Long fileId, ConversionType conversionType, Integer maxTokens) {
         FileMetadata fileMetadata = checkAccessObj.userHasAccessToFile(fileId);
+        if (fileMetadata.getStatus() != FileStatus.COMPLETED
+                && fileMetadata.getStatus() != FileStatus.FAILED) {
+            throw new RuntimeException("Yalnızca tamamlanmış veya başarısız dosyalar yeniden dönüştürülebilir.");
+        }
         if (!"URL".equals(fileMetadata.getFileType())) {
             validateFileExtension(fileMetadata.getOriginalFileName());
         }
@@ -397,5 +401,12 @@ public class FileServiceImpl implements FileService {
     public Resource downloadChunkFile(Long chunkId) {
         FileChunk fileChunk = checkAccessObj.userHasAccessToChunk(chunkId);
         return fileStorageService.loadFileAsResource(fileChunk.getFilePath());
+    }
+
+    @Override
+    public String previewFile(Long fileId) {
+        FileMetadata fileMetadata = checkAccessObj.userHasAccessToFile(fileId);
+
+        return fileStorageService.getContentFromFile(fileMetadata.getMdFilePath());
     }
 }

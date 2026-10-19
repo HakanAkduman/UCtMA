@@ -5,7 +5,7 @@ services:
     image: postgres:15-alpine
     container_name: rag-platform-postgres
     ports:
-      - "${DB_HOST_PORT}:${DB_CONTAINER_PORT}"
+      - "127.0.0.1:${DB_HOST_PORT}:${DB_CONTAINER_PORT}"
     environment:
       - POSTGRES_USER=${DB_USERNAME}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -25,8 +25,8 @@ services:
     container_name: uctma_rabbitmq
     restart: unless-stopped
     ports:
-      - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
-      - "${RABBITMQ_MGMT_PORT}:${RABBITMQ_MGMT_PORT}"
+      - "127.0.0.1:${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT}:${RABBITMQ_MGMT_PORT}"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
@@ -39,7 +39,7 @@ services:
     build: .
     container_name: rag-platform-backend
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - uploads:/uploads
     env_file:
@@ -52,6 +52,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRATION=${JWT_EXPIRATION}
+      - CALLBACK_SHARED_SECRET=${CALLBACK_SHARED_SECRET}
       - SMTP_USERNAME=${SMTP_USERNAME}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_HOST=${SMTP_HOST}

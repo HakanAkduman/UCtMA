@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -187,6 +188,20 @@ public class FileStorageServiceImpl implements FileStorageService {
             throw new RuntimeException(
                     "Chunk dosyaları ZIP haline getirilirken hata oluştu: " + e.getMessage(),
                     e
+            );
+        }
+    }
+
+    @Override
+    public String getContentFromFile(String filePath) {
+        try {
+            return Files.readString(
+                            Path.of(filePath),
+                            StandardCharsets.UTF_8
+            );
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Dosya okunamadı: " + filePath, e
             );
         }
     }

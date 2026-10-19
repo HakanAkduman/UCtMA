@@ -77,7 +77,33 @@ if grep -q '^BOOTSTRAP_ADMIN_PASSWORD=GENERATED_BY_START_SH$' "$BACKEND_ENV" \
     fi
     printf '[AYAR] İlk admin parolası güvenli şekilde üretildi.\n'
 fi
+
+CALLBACK_SHARED_SECRET=$(sed -n 's/^CALLBACK_SHARED_SECRET=//p' "$BACKEND_ENV" | head -n 1)
+if [ -z "$CALLBACK_SHARED_SECRET" ] || [ "$CALLBACK_SHARED_SECRET" = "GENERATED_BY_START_SH" ]; then
+    CALLBACK_SHARED_SECRET=$(sed -n 's/^CALLBACK_SHARED_SECRET=//p' "$CONVERTER_ENV" | head -n 1)
+fi
+if [ -z "$CALLBACK_SHARED_SECRET" ] || [ "$CALLBACK_SHARED_SECRET" = "GENERATED_BY_START_SH" ]; then
+    CALLBACK_SHARED_SECRET=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+fi
+[ -n "$CALLBACK_SHARED_SECRET" ] || fail "Callback için güvenli paylaşılan anahtar üretilemedi."
+[ "${#CALLBACK_SHARED_SECRET}" -ge 32 ] || fail "CALLBACK_SHARED_SECRET en az 32 karakter olmalıdır."
+
+set_env_value() {
+    target=$1
+    key=$2
+    value=$3
+    if grep -q "^$key=" "$target"; then
+        sed "s|^$key=.*|$key=$value|" "$target" > "$target.tmp"
+        mv "$target.tmp" "$target"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$target"
+    fi
+}
+
+set_env_value "$BACKEND_ENV" "CALLBACK_SHARED_SECRET" "$CALLBACK_SHARED_SECRET"
+set_env_value "$CONVERTER_ENV" "CALLBACK_SHARED_SECRET" "$CALLBACK_SHARED_SECRET"
 chmod 600 "$BACKEND_ENV"
+chmod 600 "$CONVERTER_ENV"
 
 backend_compose() {
     docker compose --env-file "$BACKEND_ENV" \

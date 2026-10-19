@@ -9,14 +9,18 @@ import com.app.uctma.backend.dto.UrlConvertReqDTO;
 import com.app.uctma.backend.model.ApiResponse;
 import com.app.uctma.backend.model.ConversionType;
 import com.app.uctma.backend.service.FileService;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 
 @RestController
@@ -25,6 +29,16 @@ import java.util.List;
 public class FileController {
 
     private final FileService fileService;
+
+    @Value("${CALLBACK_SHARED_SECRET}")
+    private String callbackSharedSecret;
+
+    @PostConstruct
+    void validateCallbackSharedSecret() {
+        if (callbackSharedSecret == null || callbackSharedSecret.length() < 32) {
+            throw new IllegalStateException("CALLBACK_SHARED_SECRET must contain at least 32 characters.");
+        }
+    }
 
     @PostMapping(value = "/upload",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<FileUploadResDTO>> fileUpload (ConvertFileReqDTO convertFileReqDTO){
@@ -39,7 +53,15 @@ public class FileController {
     }
 
     @PostMapping("/callback")
-    public ResponseEntity<ApiResponse<Void>> processCallback(@RequestBody FileProcessingCallbackReqDTO callbackDTO) {
+    public ResponseEntity<ApiResponse<Void>> processCallback(
+            @RequestHeader(value = "X-UCTMA-Callback-Secret", required = false) String suppliedSecret,
+            @RequestBody FileProcessingCallbackReqDTO callbackDTO) {
+        if (suppliedSecret == null || !MessageDigest.isEqual(
+                callbackSharedSecret.getBytes(StandardCharsets.UTF_8),
+                suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         fileService.handleFileProcessingCallback(callbackDTO);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK));
     }
@@ -114,6 +136,14 @@ public class FileController {
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + zipResource.getFilename() + "\"")
                 .body(zipResource);
+    }
+
+    @GetMapping("/{fileId}/preview")
+    public ResponseEntity<ApiResponse<String>> previewFile(@PathVariable Long fileId) {
+
+
+        String file = fileService.previewFile(fileId);
+        return ResponseEntity.ok(ApiResponse.success(file));
     }
 
 

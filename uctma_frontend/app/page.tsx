@@ -8,6 +8,7 @@ import { FileUploader, SUPPORTED_FILE_EXTENSIONS } from "../components/FileUploa
 import { LoginScreen } from "../components/LoginScreen";
 import { Navbar } from "../components/Navbar";
 import { PasswordForm } from "../components/PasswordForm";
+import { PreviewDialog } from "../components/PreviewDialog";
 import { RegisterForm } from "../components/RegisterForm";
 import { UsersDialog } from "../components/UsersDialog";
 import { UrlUploader } from "../components/UrlUploader";
@@ -23,7 +24,7 @@ declare global {
   }
 }
 
-type Dialog = "register" | "password" | "chunks" | "users" | "url" | null;
+type Dialog = "register" | "password" | "chunks" | "preview" | "users" | "url" | null;
 type MessageType = "success" | "error";
 
 export default function Home() {
@@ -32,6 +33,9 @@ export default function Home() {
   const [dialog, setDialog] = useState<Dialog>(null);
   // Chunk dialog'unda hangi dosyanın chunk'larını göstereceğimizi tutar.
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  const [previewFileName, setPreviewFileName] = useState("");
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   // Kullanıcıya gösterilecek başarılı işlem veya hata mesajı.
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<MessageType>("success");
@@ -147,6 +151,21 @@ export default function Home() {
     await run(() => authenticatedFiles.loadChunks(fileId));
   }
 
+  async function openPreview(fileId: number, fileName: string) {
+    setPreviewFileName(fileName);
+    setPreviewContent(null);
+    setPreviewError(null);
+    setDialog("preview");
+    setBusy(true);
+    try {
+      setPreviewContent(await authenticatedFiles.preview(fileId));
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Önizleme yüklenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // RegisterForm submit olayını backend'deki kullanıcı oluşturma endpoint'ine gönderir.
   async function registerUser(event: FormEvent) {
     // Kullanıcı kayıt formunun normal browser submit davranışını engelleriz.
@@ -198,7 +217,7 @@ export default function Home() {
       )}
       {/* FileTable dosyaları ve butonları gösterir. API çağrıları burada doğrudan
           yapılmaz; ilgili işlemler callback olarak FileTable'a aktarılır. */}
-      <FileTable files={authenticatedFiles.files} busy={busy} onReconvert={(id) => void run(() => authenticatedFiles.reconvert(id, conversionType, maxTokens), "Dosya tekrar kuyruğa gönderildi.")} onDownload={(path, name) => void run(() => authenticatedFiles.download(path, name))} onChunks={(id) => void openChunks(id)} onDelete={(id) => void run(async () => { if (window.confirm("Bu dosya ve tüm çıktıları silinsin mi?")) await authenticatedFiles.removeFile(id); })} />
+      <FileTable files={authenticatedFiles.files} busy={busy} onReconvert={(id) => void run(() => authenticatedFiles.reconvert(id, conversionType, maxTokens), "Dosya tekrar kuyruğa gönderildi.")} onDownload={(path, name) => void run(() => authenticatedFiles.download(path, name))} onPreview={(id, name) => void openPreview(id, name)} onChunks={(id) => void openChunks(id)} onDelete={(id) => void run(async () => { if (window.confirm("Bu dosya ve tüm çıktıları silinsin mi?")) await authenticatedFiles.removeFile(id); })} />
       {/* Dialog component'leri yalnızca ilgili state seçildiğinde oluşturulur.
           Böylece kullanıcı listesi, şifre formu ve chunk listesi ana sayfa
           akışını büyütmeden ayrı dosyalarda kalır. */}
@@ -206,6 +225,7 @@ export default function Home() {
       {dialog === "password" && <PasswordForm required={auth.mustChangePassword} currentPassword={auth.password} newPassword={auth.newPassword} confirmPassword={auth.confirmPassword} busy={busy} onCurrentPasswordChange={auth.setPassword} onNewPasswordChange={auth.setNewPassword} onConfirmPasswordChange={auth.setConfirmPassword} onSubmit={changePassword} onClose={() => setDialog(null)} />}
       {dialog === "users" && <UsersDialog users={authenticatedFiles.users} busy={busy} onDelete={(email) => void run(() => authenticatedFiles.removeUser(email))} onClose={() => setDialog(null)} />}
       {dialog === "chunks" && selectedFileId !== null && <ChunksDialog chunks={selectedChunks} busy={busy} onDownload={(chunk) => void run(() => authenticatedFiles.download(`/file/chunks/${chunk.id}/download`, chunk.chunkName))} onDelete={(id) => void run(() => authenticatedFiles.removeChunk(selectedFileId, id))} onClose={() => setDialog(null)} />}
+      {dialog === "preview" && <PreviewDialog fileName={previewFileName} content={previewContent} loading={busy && previewContent === null && previewError === null} error={previewError} onClose={() => setDialog(null)} />}
       {dialog === "url" && <UrlUploader busy={busy} conversionType={conversionType} maxTokens={maxTokens} onConversionTypeChange={setConversionType} onMaxTokensChange={setMaxTokens} onSubmit={(url, type, tokens) => void uploadUrl(url, type, tokens)} onClose={() => setDialog(null)} />}
     </main>
   );

@@ -70,9 +70,19 @@ class AdminBootstrapTest {
     @Test
     void rejectsPartialOrWeakBootstrapCredentials() {
         assertThrows(IllegalStateException.class, () -> bootstrap("admin@example.com", "").run(arguments()));
-        assertThrows(IllegalStateException.class, () -> bootstrap("admin@example.com", "short").run(arguments()));
+        assertThrows(IllegalStateException.class, () -> bootstrap("admin@example.com", "1234567").run(arguments()));
 
         verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void acceptsEightCharacterBootstrapPassword() {
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("12345678")).thenReturn("encoded-password");
+
+        bootstrap("admin@example.com", "12345678").run(arguments());
+
+        verify(userRepository).save(any(User.class));
     }
 
     private AdminBootstrap bootstrap(String email, String password) {

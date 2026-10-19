@@ -4,7 +4,7 @@ services:
     container_name: docling_converter_service
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - uploads:/uploads
       - docling_models:/app/models_cache
@@ -21,6 +21,7 @@ services:
       - RABBITMQ_EXCHANGE_FILE=${RABBITMQ_EXCHANGE_FILE}
       - RABBITMQ_ROUTING_KEY_FILE=${RABBITMQ_ROUTING_KEY_FILE}
       - BACKEND_CALLBACK_URL=${BACKEND_CALLBACK_URL}
+      - CALLBACK_SHARED_SECRET=${CALLBACK_SHARED_SECRET}
 
 volumes:
   docling_models:

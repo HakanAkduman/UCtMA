@@ -43,8 +43,8 @@ public class AdminBootstrap implements ApplicationRunner {
         if (!StringUtils.hasText(adminEmail) || !StringUtils.hasText(adminPassword)) {
             throw new IllegalStateException("Both BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD must be configured.");
         }
-        if (adminPassword.length() < 12) {
-            throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters long.");
+        if (adminPassword.length() < 8) {
+            throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters long.");
         }
 
         if (userRepository.findByEmail(adminEmail).isPresent()) {

@@ -34,6 +34,7 @@ Arayüze `http://localhost:<FRONTEND_PORT>` adresinden erişilir.
 - Navbar üzerinden HTTP/HTTPS URL'lerini Markdown'a dönüştürme
 - Markdown veya Markdown + Chunk seçimi
 - Dosya listesi
+- Tamamlanan dosyaların Markdown önizlemesi
 - Tekrar dönüştürme
 - Markdown indirme
 - Chunk listesini dialog içinde görüntüleme

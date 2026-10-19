@@ -24,8 +24,9 @@ export function PasswordForm(props: PasswordFormProps) {
         {!props.required && (
           <input className="input w-full" type="password" placeholder="Mevcut şifre" value={props.currentPassword} onChange={(e) => props.onCurrentPasswordChange(e.target.value)} required />
         )}
-        <input className="input w-full" type="password" placeholder="Yeni şifre" value={props.newPassword} onChange={(e) => props.onNewPasswordChange(e.target.value)} required />
-        <input className="input w-full" type="password" placeholder="Yeni şifre tekrar" value={props.confirmPassword} onChange={(e) => props.onConfirmPasswordChange(e.target.value)} required />
+        <p className="text-sm text-slate-500">Yeni şifreniz en az 8 karakter olmalıdır.</p>
+        <input className="input w-full" type="password" placeholder="Yeni şifre" value={props.newPassword} onChange={(e) => props.onNewPasswordChange(e.target.value)} minLength={8} required />
+        <input className="input w-full" type="password" placeholder="Yeni şifre tekrar" value={props.confirmPassword} onChange={(e) => props.onConfirmPasswordChange(e.target.value)} minLength={8} required />
         <button className="button w-full" disabled={props.busy}>{props.busy ? "Kaydediliyor..." : "Şifreyi kaydet"}</button>
       </form>
     </Modal>

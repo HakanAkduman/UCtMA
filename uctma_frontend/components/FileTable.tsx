@@ -1,18 +1,49 @@
 import { useState } from "react";
 import { FileItem } from "../lib/types";
 
+type ActionIconName = "reconvert" | "preview" | "markdown" | "chunks" | "archive" | "delete";
+
+function ActionIcon({ name }: { name: ActionIconName }) {
+  const commonProps = {
+    "aria-hidden": true as const,
+    className: "h-5 w-5",
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: 1.8,
+    viewBox: "0 0 24 24",
+  };
+
+  switch (name) {
+    case "reconvert":
+      return <svg {...commonProps}><path d="M20 7v5h-5M4 17v-5h5" /><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2" /></svg>;
+    case "preview":
+      return <svg {...commonProps}><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>;
+    case "markdown":
+      return <svg {...commonProps}><path d="M6 2.75h8l4 4v5.5M14 2.75v4h4M6 2.75v18.5h6" /><path d="M15 14v7m-3-3 3 3 3-3" /><path d="M8.5 11h5M8.5 14h3" /></svg>;
+    case "chunks":
+      return <svg {...commonProps}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></svg>;
+    case "archive":
+      return <svg {...commonProps}><path d="M4 7.5h16v13H4zM3 3.5h18v4H3z" /><path d="M12 9v8m-2-2 2 2 2-2M10 11h4" /></svg>;
+    case "delete":
+      return <svg {...commonProps}><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 14h11l1-14M9 7V4h6v3" /></svg>;
+  }
+}
+
 type FileTableProps = {
   files: FileItem[];
   busy: boolean;
   onReconvert: (id: number) => void;
   onDownload: (path: string, name: string) => void;
+  onPreview: (id: number, name: string) => void;
   onChunks: (id: number) => void;
   onDelete: (id: number) => void;
 };
 
 // Bu component sadece dosya listesini ve butonları render eder.
 // API çağrıları parent'tan gelen callback'ler üzerinden çalıştırılır.
-export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDelete }: FileTableProps) {
+export function FileTable({ files, busy, onReconvert, onDownload, onPreview, onChunks, onDelete }: FileTableProps) {
   const [expandedErrorFileId, setExpandedErrorFileId] = useState<number | null>(null);
 
   function statusLabel(status: FileItem["status"]) {
@@ -38,7 +69,7 @@ export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDe
       <table className="w-full table-fixed text-left text-sm">
         <thead className="border-b bg-slate-50">
           <tr>
-            <th className="w-1/4 p-4">Dosya</th>
+            <th className="w-1/2 p-4">Dosya</th>
             <th className="w-1/6 p-4">Durum</th>
             <th className="p-4">İşlemler</th>
           </tr>
@@ -85,12 +116,64 @@ export function FileTable({ files, busy, onReconvert, onDownload, onChunks, onDe
               )}
             </td>
             <td className="p-4 align-top">
-              <div className="flex flex-wrap gap-2">
-                <button className="button-secondary" disabled={busy} onClick={() => onReconvert(file.id)}>Tekrar dönüştür</button>
-                <button className="button-secondary" onClick={() => onDownload(`/file/${file.id}/download-md`, `${file.originalFileName}.md`)}>MD indir</button>
-                <button className="button-secondary" onClick={() => onChunks(file.id)}>Chunkları görüntüle</button>
-                <button className="button-secondary" onClick={() => onDownload(`/file/chunks/${file.id}/download-all`, `${file.originalFileName}-chunks.zip`)}>Tüm chunkları indir</button>
-                <button className="text-red-600" disabled={busy} onClick={() => onDelete(file.id)}>Sil</button>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0"
+                  title="Tekrar dönüştür"
+                  aria-label={`${file.originalFileName}: tekrar dönüştür`}
+                  disabled={busy || (file.status !== "COMPLETED" && file.status !== "FAILED")}
+                  onClick={() => onReconvert(file.id)}
+                >
+                  <ActionIcon name="reconvert" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0"
+                  title="Önizle"
+                  aria-label={`${file.originalFileName}: önizle`}
+                  disabled={busy || file.status !== "COMPLETED"}
+                  onClick={() => onPreview(file.id, file.originalFileName)}
+                >
+                  <ActionIcon name="preview" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0"
+                  title="Markdown indir"
+                  aria-label={`${file.originalFileName}: Markdown indir`}
+                  onClick={() => onDownload(`/file/${file.id}/download-md`, `${file.originalFileName}.md`)}
+                >
+                  <ActionIcon name="markdown" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0"
+                  title="Chunkları görüntüle"
+                  aria-label={`${file.originalFileName}: chunkları görüntüle`}
+                  onClick={() => onChunks(file.id)}
+                >
+                  <ActionIcon name="chunks" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0"
+                  title="Tüm chunkları ZIP olarak indir"
+                  aria-label={`${file.originalFileName}: tüm chunkları ZIP olarak indir`}
+                  onClick={() => onDownload(`/file/chunks/${file.id}/download-all`, `${file.originalFileName}-chunks.zip`)}
+                >
+                  <ActionIcon name="archive" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary inline-flex h-10 w-full items-center justify-center p-0 text-red-600"
+                  title="Sil"
+                  aria-label={`${file.originalFileName}: sil`}
+                  disabled={busy}
+                  onClick={() => onDelete(file.id)}
+                >
+                  <ActionIcon name="delete" />
+                </button>
               </div>
             </td>
           </tr>)}

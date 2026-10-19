@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class FileProcessingCallbackTest {
 
@@ -86,6 +87,7 @@ class FileProcessingCallbackTest {
     @Test
     void reconvertClearsPreviousErrorMessage() {
         FileMetadata fileMetadata = metadataWithId(15L);
+        fileMetadata.setStatus(FileStatus.FAILED);
         fileMetadata.setErrorMessage("Önceki dönüşüm hatası");
         when(checkAccess.userHasAccessToFile(15L)).thenReturn(fileMetadata);
         when(fileChunkRepository.findByFileMetadataIdOrderByChunkIndexAsc(15L))
@@ -99,8 +101,25 @@ class FileProcessingCallbackTest {
     }
 
     @Test
+    void reconvertRejectsFilesThatAreStillPendingOrProcessing() {
+        for (FileStatus status : List.of(FileStatus.PENDING, FileStatus.PROCESSING)) {
+            FileMetadata fileMetadata = metadataWithId(17L);
+            fileMetadata.setStatus(status);
+            when(checkAccess.userHasAccessToFile(17L)).thenReturn(fileMetadata);
+
+            assertThrows(
+                    RuntimeException.class,
+                    () -> fileService.reconvertFile(17L, ConversionType.CONVERT_AND_CHUNK, null)
+            );
+        }
+
+        verifyNoInteractions(fileMetadataRepository, fileChunkRepository, rabbitFileMessageService);
+    }
+
+    @Test
     void reconvertPublishesMessageOnlyAfterTransactionCommit() {
         FileMetadata fileMetadata = metadataWithId(16L);
+        fileMetadata.setStatus(FileStatus.COMPLETED);
         when(checkAccess.userHasAccessToFile(16L)).thenReturn(fileMetadata);
         when(fileChunkRepository.findByFileMetadataIdOrderByChunkIndexAsc(16L))
                 .thenReturn(List.of());

@@ -15,6 +15,7 @@ RECONNECT_DELAY_SECONDS = 5
 RABBITMQ_HEARTBEAT_SECONDS = int(os.getenv("RABBITMQ_HEARTBEAT_SECONDS", 600))
 
 BACKEND_CALLBACK_URL = os.getenv("BACKEND_CALLBACK_URL")
+CALLBACK_SHARED_SECRET = os.getenv("CALLBACK_SHARED_SECRET")
 
 
 def format_user_error(error: Exception, file_path: str, original_file_name: str) -> str:
@@ -41,7 +42,12 @@ def format_user_error(error: Exception, file_path: str, original_file_name: str)
 
 def send_callback(payload: dict):
     try:
-        res = requests.post(BACKEND_CALLBACK_URL, json=payload, timeout=60)
+        res = requests.post(
+            BACKEND_CALLBACK_URL,
+            json=payload,
+            headers={"X-UCTMA-Callback-Secret": CALLBACK_SHARED_SECRET},
+            timeout=60,
+        )
         print(
             f"[CALLBACK] Status: {res.status_code}, "
             f"Response: {res.text[:500]}"
@@ -143,6 +149,11 @@ def callback(ch, method, properties, body):
         reject_message(ch, method.delivery_tag)
 
 def start_consumer():
+    if not CALLBACK_SHARED_SECRET or len(CALLBACK_SHARED_SECRET) < 32:
+        raise RuntimeError(
+            "CALLBACK_SHARED_SECRET must be configured with at least 32 characters."
+        )
+
     while True:
         conn = None
         try:

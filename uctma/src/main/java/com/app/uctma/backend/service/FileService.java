@@ -31,4 +31,5 @@ public interface FileService {
 
     Resource downloadChunkFilesFromFileId(Long fileId);
     Resource downloadChunkFile(Long chunkId);
+    String previewFile(Long fileId);
 }

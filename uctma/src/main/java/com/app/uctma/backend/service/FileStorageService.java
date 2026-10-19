@@ -15,4 +15,6 @@ public interface FileStorageService {
     void deleteFile(String filePath);
     Resource loadFileAsResource(String filePath);
     Resource loadChunksAsZipResource(Long fileId, List<FileChunk> chunks);
+    String getContentFromFile(String filePath);
+
 }

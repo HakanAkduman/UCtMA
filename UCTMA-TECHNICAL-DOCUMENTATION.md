@@ -60,14 +60,20 @@ dizininden aşağıdaki komut çalıştırılabilir:
 ```
 
 İlk çalıştırmada script, backend, converter ve frontend için eksik `.env`
-dosyalarını ilgili `.env.example` şablonlarından oluşturur; backend için JWT
-anahtarı üretir. Ardından PostgreSQL/RabbitMQ, backend, model prefetch,
-Docling converter ve frontend servislerini başlatır. Model volume'ü önceden
-yoksa oluşturulur. İlk Docker build'i ve model indirmeleri internet bağlantısı
-gerektirebilir. Prefetch başarısız olsa da başlatma devam eder; ilk dönüştürme
-isteğinde eksik modelleri indirmek için converter internet erişimini kullanır.
-İnternetsiz kullanım öncesinde gerekli modellerin prefetch edilmesi gerekir.
-Arayüz `http://localhost:3000` adresindedir.
+dosyalarını ilgili `.env.example` şablonlarından oluşturur; JWT anahtarı, ilk
+admin parolası ve backend/converter arasında ortak callback sırrı üretir. İlk
+admin bilgileri `uctma/.env` dosyasına yazılır; callback sırrı iki servisin
+`.env` dosyasında eşit tutulur. Ardından PostgreSQL/RabbitMQ, backend, model
+prefetch, Docling converter ve frontend servislerini başlatır. Model volume'ü
+önceden yoksa oluşturulur. İlk Docker build'i ve model indirmeleri internet
+bağlantısı gerektirebilir. Prefetch başarısız olsa da başlatma devam eder; ilk
+dönüştürme isteğinde eksik modelleri indirmek için converter internet erişimini
+kullanır. İnternetsiz kullanım öncesinde gerekli modellerin prefetch edilmesi
+gerekir.
+
+Compose ile host'a yayımlanan servis portları yalnızca `127.0.0.1` arayüzüne
+bağlanır; servisler birbirleriyle `uctma_default` Docker ağı üzerinden iletişim
+kurar. Arayüz `http://localhost:3000` adresindedir.
 
 ### 3.1 Backend
 
@@ -93,6 +99,8 @@ uctma/src/main/java/com/app/uctma/backend
 
 Backend'in container içindeki HTTP portu `8080`'dir.
 
+Host'taki `8080` portu yalnızca `127.0.0.1` arayüzüne yayımlanır.
+
 Backend Docker image'i Maven ile build edilir.
 
 Dockerfile, Maven build aşamasında Java 21 kullanır.
@@ -105,10 +113,13 @@ Frontend aşağıdaki teknolojileri kullanır:
 - Next.js `14.2.15`
 - React `18.3.1`
 - React DOM `18.3.1`
+- `react-markdown` ve `remark-gfm` ile güvenli Markdown/GFM render
 - TypeScript `5.7.2`
 - Tailwind CSS `3.4.16`
 
 Frontend container portu `3000`'dür.
+
+Host'taki frontend portu yalnızca `127.0.0.1` arayüzüne yayımlanır.
 
 Frontend, Backend'e doğrudan tarayıcı isteği göndermez.
 
@@ -130,6 +141,8 @@ Converter container aynı anda iki işlem başlatır:
 2. RabbitMQ consumer
 
 FastAPI server `8000` portunda çalışır.
+
+Host'taki `8000` portu yalnızca `127.0.0.1` arayüzüne yayımlanır.
 
 RabbitMQ consumer `file_processing_queue` kuyruğunu dinler.
 
@@ -177,6 +190,8 @@ RabbitMQ AMQP portu `5672`'dir.
 
 RabbitMQ Management portu `15672`'dır.
 
+AMQP ve Management portları host'ta yalnızca `127.0.0.1` arayüzüne yayımlanır.
+
 RabbitMQ verileri `rabbitmq_data` volume'ünde tutulur.
 
 Backend aşağıdaki kaynakları tanımlar:
@@ -221,7 +236,8 @@ Mevcut yapılandırmada kullanıcı adı `rag_admin`'dir.
 
 PostgreSQL container portu `5432`'dir.
 
-Host portu `DB_HOST_PORT` ile belirlenir.
+Host portu `DB_HOST_PORT` ile belirlenir ve yalnızca `127.0.0.1` arayüzüne
+yayımlanır.
 
 Mevcut yapılandırmada host portu `5433`'tür.
 
@@ -329,9 +345,12 @@ Başlıca değişkenler:
 | `DB_USERNAME` | PostgreSQL kullanıcı adı |
 | `DB_PASSWORD` | PostgreSQL şifresi |
 | `DB_CONTAINER_PORT` | PostgreSQL container portu |
-| `DB_HOST_PORT` | PostgreSQL host portu |
+| `DB_HOST_PORT` | Yalnızca localhost'a yayımlanan PostgreSQL host portu |
 | `JWT_SECRET` | JWT imzalama anahtarı |
 | `JWT_EXPIRATION` | JWT geçerlilik süresi |
+| `CALLBACK_SHARED_SECRET` | Converter callback doğrulaması için paylaşılan sır |
+| `BOOTSTRAP_ADMIN_EMAIL` | İlk çalıştırmada oluşturulacak admin e-posta adresi |
+| `BOOTSTRAP_ADMIN_PASSWORD` | İlk admin parolası; `start.sh` tarafından üretilir |
 | `SMTP_USERNAME` | E-posta hesabı |
 | `SMTP_PASSWORD` | E-posta hesabı şifresi |
 | `SMTP_HOST` | SMTP sunucusu |
@@ -349,6 +368,12 @@ Secret değerleri bu dokümana yazılmamalıdır.
 
 Üretim ortamında varsayılan `guest` bilgileri kullanılmamalıdır.
 
+`start.sh` callback sırrını ilk çalıştırmada üretir ve aynı değeri backend ile
+converter `.env` dosyalarına yazar. İki servis en az 32 karakterli aynı değeri
+kullanmalıdır. İlk admin hesabı yalnızca belirtilen e-posta henüz kayıtlı
+değilse oluşturulur; parola BCrypt ile saklanır ve ilk girişte değiştirilmesi
+istenir. Üretilen ilk admin parolası `uctma/.env` dosyasında bulunur.
+
 ### 5.2 Converter ortam değişkenleri
 
 Converter `docling_converter_service/.env` dosyasını kullanır.
@@ -365,6 +390,7 @@ Başlıca değişkenler:
 | `RABBITMQ_EXCHANGE_FILE` | Ortam uyumluluğu için exchange adı |
 | `RABBITMQ_ROUTING_KEY_FILE` | Ortam uyumluluğu için routing key değeri |
 | `BACKEND_CALLBACK_URL` | Backend callback adresi |
+| `CALLBACK_SHARED_SECRET` | Callback isteğinde gönderilen ortak sır |
 
 Mevcut callback adresi:
 
@@ -383,6 +409,8 @@ http://backend-service:8080
 ```
 
 Frontend rewrite bu değerin sonuna `/uctma/api` ekler.
+
+Frontend, tamamlanmış dosyaların Markdown önizlemesini de gösterir.
 
 ## 6. Backend database modeli
 
@@ -513,7 +541,10 @@ Giriş yapmış her kullanıcı aşağıdaki işlemleri yapabilir:
 
 Bir kullanıcı başka kullanıcıya ait file veya chunk'a erişemez.
 
-Login endpoint'i ve converter callback endpoint'i public'tir.
+Login endpoint'i public'tir. Callback endpoint'i JWT filtresinden muaf olsa da
+kimlik doğrulamasız değildir: backend ve converter arasında paylaşılan
+`CALLBACK_SHARED_SECRET`, `X-UCTMA-Callback-Secret` HTTP header'ı ile
+doğrulanır. Eksik veya yanlış sır `401 Unauthorized` döndürür.
 
 Swagger endpoint'leri de public olarak yapılandırılmıştır:
 
@@ -523,7 +554,24 @@ Swagger endpoint'leri de public olarak yapılandırılmıştır:
 
 ## 8. User işlemleri
 
-### 8.1 User oluşturma
+### 8.1 İlk admin hesabı
+
+`AdminBootstrap`, uygulama açılışında `BOOTSTRAP_ADMIN_EMAIL` ve
+`BOOTSTRAP_ADMIN_PASSWORD` ayarlarını kontrol eder. İkisi de tanımlı değilse
+bootstrap atlanır; yalnızca biri tanımlıysa veya parola 8 karakterden kısaysa
+uygulama başlatılmaz. E-posta adresi henüz kayıtlı değilse BCrypt ile
+şifrelenmiş, `ROLE_ADMIN` rolünde ve ilk girişte parola değişikliği zorunlu
+olan hesap oluşturulur. Aynı e-posta mevcutsa hesap değiştirilmez.
+
+Admin dahil kullanıcılar yeni parola belirlerken en az 8 karakter girmelidir;
+bu kural hem Frontend formunda hem Backend doğrulamasında uygulanır.
+
+`start.sh` ilk admin parolasını rastgele üretip `uctma/.env` dosyasına yazar.
+İlk giriş için e-posta ve parolayı bu dosyadan alın; parolayı güvenli biçimde
+saklayın ve ilk girişte değiştirin. `.env` dosyası kaynak kontrolüne
+eklenmemelidir.
+
+### 8.2 User oluşturma
 
 Admin aşağıdaki endpoint'i çağırır:
 
@@ -548,7 +596,7 @@ Backend geçici şifreyi e-posta ile gönderir.
 
 Yeni user için `newPasswordFlag=true` olur.
 
-### 8.2 Login
+### 8.3 Login
 
 Endpoint:
 
@@ -571,7 +619,7 @@ Kullanılan key'ler:
 - `uctma_token`
 - `uctma_role`
 
-### 8.3 İlk şifre değişikliği
+### 8.4 İlk şifre değişikliği
 
 Geçici şifre ile login yapıldığında `newPasswordRequired=true` olabilir.
 
@@ -595,7 +643,7 @@ Request body:
 
 Başarılı işlemden sonra `newPasswordFlag=false` olur.
 
-### 8.4 User silme
+### 8.5 User silme
 
 Endpoint:
 
@@ -772,7 +820,8 @@ Query parametreleri:
 
 Backend yeniden dönüştürme sırasında:
 
-1. File sahipliğini kontrol eder.
+1. File sahipliğini ve status değerinin `COMPLETED` veya `FAILED` olduğunu
+   kontrol eder. `PENDING` veya `PROCESSING` dosyalar yeniden kuyruğa alınamaz.
 2. Orijinal file uzantısını tekrar kontrol eder.
 3. Eski chunk dosyalarını siler.
 4. Eski chunk database kayıtlarını siler.
@@ -985,6 +1034,12 @@ Bu endpoint Frontend tarafından çağrılmaz.
 
 Bu endpoint yalnızca Converter'ın Backend'e sonucu bildirmesi için kullanılır.
 
+İstek, `X-UCTMA-Callback-Secret` header'ında backend ve converter `.env`
+dosyalarında ortak olan `CALLBACK_SHARED_SECRET` değerini taşımalıdır. Backend
+eksik/yanlış değerleri `401 Unauthorized` ile reddeder; sır en az 32 karakter
+olmalıdır. `start.sh` bu sırrı güvenli rastgele bir değer olarak üretip iki
+ortam dosyasına eşit yazar. Sır loglara veya kaynak koda eklenmemelidir.
+
 Callback request alanları:
 
 - `fileId`
@@ -1029,9 +1084,10 @@ Backend callback aldığında:
 `PROCESSING` veya başarılı callback geldiğinde önceki `errorMessage` değeri
 temizlenir.
 
-Callback endpoint'i SecurityConfig içinde public'tir.
-
-JWT filter callback path'ini filtrelemez.
+Callback path'i JWT filtresinden muaftır; endpoint bunun yerine paylaşılan
+callback sırrını sabit-zamanlı karşılaştırmayla doğrular. Converter JWT
+kullanmadan callback gönderebilir, ancak kimlik doğrulaması olmadan iş sonucu
+yazamaz.
 
 ## 14. Consumer acknowledgement davranışı
 
@@ -1141,6 +1197,10 @@ JSON response'larda Backend'in `ApiResponse` zarfı kontrol edilir.
 
 HTTP başarısızsa veya `success=false` ise Frontend error gösterir.
 
+Tamamlanmış dosyaların Markdown içeriği önizleme dialog'unda gösterilebilir.
+Dosya işlemleri farklı simgelerle sunulur; her simgenin tooltip'i ve erişilebilir
+adı bulunur.
+
 ## 17. REST API özeti
 
 ### 17.1 Authentication endpoint'leri
@@ -1164,11 +1224,12 @@ HTTP başarısızsa veya `success=false` ise Frontend error gösterir.
 | `DELETE` | `/uctma/api/file/{fileId}` | Authenticated | File silme |
 | `GET` | `/uctma/api/file/{fileId}/download` | Authenticated | Original file indirme |
 | `GET` | `/uctma/api/file/{fileId}/download-md` | Authenticated | Markdown indirme |
+| `GET` | `/uctma/api/file/{fileId}/preview` | Authenticated | Markdown önizleme içeriği |
 | `GET` | `/uctma/api/file/{fileId}/chunks` | Authenticated | Chunk listesi |
 | `DELETE` | `/uctma/api/file/chunks/{chunkId}` | Authenticated | Chunk silme |
 | `GET` | `/uctma/api/file/chunks/{chunkId}/download` | Authenticated | Tek chunk indirme |
 | `GET` | `/uctma/api/file/chunks/{fileId}/download-all` | Authenticated | ZIP indirme |
-| `POST` | `/uctma/api/file/callback` | Converter internal | İşlem sonucu callback |
+| `POST` | `/uctma/api/file/callback` | `X-UCTMA-Callback-Secret` | Converter işlem sonucu callback |
 
 ## 18. Hata yönetimi
 
@@ -1180,16 +1241,21 @@ Backend JSON response zarfında `success`, `data` ve `error` alanlarını kullan
 
 Frontend `success=false` response'larını hata olarak işler.
 
-### 18.1 `403` callback hatası
+### 18.1 `401` callback hatası
 
-Callback endpoint'i kaynak kodda public'tir.
+Callback isteğinde `X-UCTMA-Callback-Secret` header'ı yoksa veya backend ile
+converter'ın `CALLBACK_SHARED_SECRET` değerleri farklıysa Backend `401`
+döndürür.
 
-Çalışan container `403` döndürürse aşağıdakiler kontrol edilmelidir:
+Çalışan container callback isteğine `401` döndürürse aşağıdakiler kontrol edilmelidir:
 
-1. Backend image'inin güncel kaynak koddan build edilip edilmediği.
-2. Converter'ın doğru Backend container adına bağlanıp bağlanmadığı.
-3. `uctma_default` network'ünün iki Compose projesinde de aynı olup olmadığı.
-4. `BACKEND_CALLBACK_URL` değerinin doğru olup olmadığı.
+1. Backend ve converter `.env` dosyalarındaki `CALLBACK_SHARED_SECRET`
+   değerlerinin aynı ve en az 32 karakter olup olmadığı.
+2. Her iki container'ın `.env` dosyalarındaki yeni değeri alacak şekilde
+   yeniden oluşturulup oluşturulmadığı.
+3. Converter'ın doğru Backend container adına bağlanıp bağlanmadığı.
+4. `uctma_default` network'ünün iki Compose projesinde de aynı olup olmadığı.
+5. `BACKEND_CALLBACK_URL` değerinin doğru olup olmadığı.
 
 Backend'i yeniden build etmek için:
 
@@ -1273,6 +1339,14 @@ Backend ve Converter aynı Docker network'üne bağlanmalıdır. Proje kökünde
 şablonlardan oluşturur. SMTP ile e-posta gönderimi kullanılacaksa
 `uctma/.env` içindeki SMTP ayarları ayrıca yapılandırılmalıdır.
 
+Compose servislerini elle başlatırken backend ve converter `.env` dosyalarına
+aynı, en az 32 karakterli `CALLBACK_SHARED_SECRET` değeri yazılmalıdır.
+`BOOTSTRAP_ADMIN_EMAIL` ve `BOOTSTRAP_ADMIN_PASSWORD` birlikte
+yapılandırılmalıdır; ikisi de boş bırakılırsa admin bootstrap atlanır. Örnek
+değerler (`GENERATED_BY_START_SH`) elle başlatma için kullanılabilir secret
+değildir. Bu ayarları otomatik ve tutarlı oluşturmak için proje kökünden
+`./start.sh` kullanılması önerilir.
+
 ### 19.2 Backend'i başlatma
 
 ```bash
@@ -1324,13 +1398,14 @@ Frontend adresi:
 http://localhost:3000
 ```
 
-Backend host adresi:
+Backend host adresi (localhost):
 
 ```text
 http://localhost:8080
 ```
 
-RabbitMQ Management arayüzü:
+Converter health endpoint'i ve RabbitMQ Management arayüzü de localhost'tan
+erişilebilir:
 
 ```text
 http://localhost:15672
@@ -1341,6 +1416,11 @@ PostgreSQL host bağlantı portu mevcut ayarda:
 ```text
 5433
 ```
+
+Yayımlanan bu portlar yalnızca `127.0.0.1` arayüzüne bağlanır. Container'lar
+birbirlerine host portlarını kullanmadan `uctma_default` Docker ağı üzerinden
+erişir. Bu ağ Internet'e yayımlanmaz; ancak ağa bağlı container'ların kendi
+aralarındaki erişimi devam eder.
 
 ## 20. Doğrulama kontrol listesi
 
@@ -1356,7 +1436,7 @@ Kurulumdan sonra aşağıdaki kontroller yapılmalıdır:
 8. Login çalışıyor mu?
 9. File upload sonrası queue'da mesaj oluşuyor mu?
 10. Converter ortak volume'deki file'ı okuyabiliyor mu?
-11. Callback `200` dönüyor mu?
+11. Callback ortak sırla gönderiliyor ve başarılı istekte `200` dönüyor mu?
 12. File status `COMPLETED` veya `FAILED` oluyor mu?
 
 Converter health endpoint'i:
@@ -1406,7 +1486,15 @@ SMTP password gizli tutulmalıdır.
 
 RabbitMQ için production ortamında `guest/guest` kullanılmamalıdır.
 
-Callback endpoint'i public olduğundan network erişimi sınırlandırılmalıdır.
+Callback endpoint'i JWT filtresinden muaf olmakla birlikte
+`X-UCTMA-Callback-Secret` header'ında paylaşılan sırrı zorunlu tutar. Sır,
+backend ve converter `.env` dosyalarında aynı, en az 32 karakterli değer
+olmalıdır.
+
+Compose port eşlemeleri host'ta yalnızca `127.0.0.1`'e yayımlanır. Bu,
+uzaktaki istemcilerin host portlarına doğrudan erişmesini önler; ancak
+`uctma_default` ağına bağlanmış container'ların birbirlerine erişimini
+engellemez. Docker ağı kendi başına Internet'e yayımlanmış değildir.
 
 Production ortamında HTTPS kullanılmalıdır.
 
@@ -1427,6 +1515,7 @@ Mevcut sürümde bulunan işlevler:
 - Markdown ve chunk conversion
 - File status listeleme
 - File reconversion
+- Tamamlanmış Markdown dosyası için önizleme
 - Original file indirme endpoint'i
 - Markdown indirme
 - Chunk listeleme
@@ -1502,7 +1591,8 @@ birlikte çalışır.
    Docling pipeline'ına verir.
 6. Markdown/chunk sonucu mevcut callback üzerinden Backend'e kaydedilir.
 7. URL dosya listesinde URL etiketiyle gösterilir; Markdown indirme, chunk
-   görüntüleme, yeniden dönüştürme ve silme mevcut dosya işlemlerini kullanır.
+   görüntüleme, önizleme, yeniden dönüştürme ve silme mevcut dosya işlemlerini
+   kullanır.
 
 ### 26.2 Veri ve sınırlar
 

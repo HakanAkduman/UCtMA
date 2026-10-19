@@ -110,5 +110,10 @@ export function useFiles(token: string | null) {
     if (token) await downloadApiFile(path, name, token);
   }
 
-  return { files, chunks, users, loadFiles, upload, uploadUrl, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, registerUser, download };
+  async function preview(fileId: number) {
+    if (!token) throw new Error("Oturum bulunamadı.");
+    return api<string>(`/file/${fileId}/preview`, {}, token);
+  }
+
+  return { files, chunks, users, loadFiles, upload, uploadUrl, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, registerUser, download, preview };
 }
