@@ -94,11 +94,21 @@ export function useFiles(token: string | null) {
     setUsers((current) => current.filter((user) => user.email !== email));
   }
 
-  // Admin tarafından yeni kullanıcı oluşturur. Geçici şifre backend tarafından
-  // oluşturulup e-posta ile gönderilir.
-  async function registerUser(email: string, role: string) {
+  async function setUserEnabled(email: string, enabled: boolean) {
     if (!token) return;
-    await api("/auth/register", {
+    const updatedUser = await api<UserItem>(`/auth/users/${encodeURIComponent(email)}/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }, token);
+    setUsers((current) => current.map((user) => user.email === updatedUser.email ? updatedUser : user));
+  }
+
+  // Admin tarafından davet edilen kullanıcı için geçici şifre backend tarafından
+  // oluşturulup e-posta ile gönderilir.
+  async function inviteUser(email: string, role: string) {
+    if (!token) return;
+    await api("/auth/invite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, role }),
@@ -115,5 +125,5 @@ export function useFiles(token: string | null) {
     return api<string>(`/file/${fileId}/preview`, {}, token);
   }
 
-  return { files, chunks, users, loadFiles, upload, uploadUrl, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, registerUser, download, preview };
+  return { files, chunks, users, loadFiles, upload, uploadUrl, reconvert, removeFile, loadChunks, removeChunk, loadUsers, removeUser, setUserEnabled, inviteUser, download, preview };
 }

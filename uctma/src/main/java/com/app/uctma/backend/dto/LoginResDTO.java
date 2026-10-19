@@ -20,6 +20,7 @@ public class LoginResDTO {
     private String tokenType;
     private boolean newPasswordRequired;
     private Role role;
+    private boolean passwordResetSession;
 
 
 

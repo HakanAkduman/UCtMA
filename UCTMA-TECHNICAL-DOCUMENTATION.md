@@ -425,6 +425,12 @@ Alanlar:
 - `password`
 - `role`
 - `newPasswordFlag`
+- `password_reset_hash`
+- `password_reset_expires_at`
+- `password_reset_requested_at`
+- `password_reset_session_id`
+- `enabled`
+- `failed_login_attempts`
 
 Bir user birden fazla `FileMetadata` kaydına sahip olabilir.
 
@@ -501,6 +507,24 @@ Migration öncesinde database yedeği alınmalıdır.
 `files.error_message` kolonu `V4__add_file_error_message.sql` ile eklenir ve
 FAILED callback'inde Converter'ın gönderdiği hata açıklamasını saklar.
 
+Authentication ve parola özellikleri için sonraki migration'lar:
+
+- `V5__create_auth_password_policies.sql`: Admin tarafından ayarlanabilen parola
+  politikaları ve varsayılan 8 karakter minimum uzunluk kuralı.
+- `V6__add_password_expiration_policy.sql`: `users.password_changed_at` alanı
+  ve isteğe bağlı `MAX_AGE_DAYS` politikası.
+- `V7__add_self_registration_and_email_verification.sql`:
+  `users.email_verified`, auth hesap ayarları ve e-posta doğrulama kodları
+  tabloları.
+- `V8__add_one_time_password_reset.sql`: Tek kullanımlık parola sıfırlama
+  bilgileri için `users` kolonları.
+- `V9__rename_self_registration_setting.sql`: Hesap ayarı kodunu
+  `SELF_REGISTRATION` değerinden `REGISTRATION_ENABLED` değerine taşır ve
+  e-posta doğrulama ayarının görünen açıklamasını günceller.
+- `V10__add_login_lockout_and_user_status.sql`: Kullanıcı hesabı etkinliğini
+  ve hatalı giriş sayacını ekler; varsayılan olarak 5 hatalı denemede hesabı
+  devre dışı bırakan ayarı açar.
+
 ## 7. Authentication ve Authorization
 
 Backend stateless Authentication kullanır.
@@ -520,11 +544,17 @@ Desteklenen role değerleri:
 - `ROLE_USER`
 - `ROLE_ADMIN`
 
-`ROLE_ADMIN` aşağıdaki endpoint'lere erişebilir:
+`ROLE_ADMIN` aşağıdaki kullanıcı yönetimi işlemlerine erişebilir:
 
-- User register
-- User list
-- User delete
+- Kullanıcı davet etme (`/auth/invite`)
+- Kullanıcıları listeleme ve silme
+- Kullanıcı hesaplarını etkinleştirme veya devre dışı bırakma
+- Auth hesap ayarlarını ve parola politikalarını yönetme
+
+Herkese açık auth endpoint'leri login, parola sıfırlama, public ayarları alma,
+kayıt ve e-posta doğrulama işlemleridir. Kayıt endpoint'i public erişime açık
+olsa da kullanıcı kaydı uygulama ayarlarında etkin değilse servis isteği
+reddeder.
 
 Giriş yapmış her kullanıcı aşağıdaki işlemleri yapabilir:
 
@@ -546,6 +576,15 @@ kimlik doğrulamasız değildir: backend ve converter arasında paylaşılan
 `CALLBACK_SHARED_SECRET`, `X-UCTMA-Callback-Secret` HTTP header'ı ile
 doğrulanır. Eksik veya yanlış sır `401 Unauthorized` döndürür.
 
+Şifremi unuttum endpoint'i de public'tir. Kayıtlı/doğrulanmış hesaplar için
+30 dakika geçerli, veritabanında hash'li saklanan tek kullanımlık geçici parola
+e-posta ile gönderilir. Geçici parola login sırasında tüketilir; oluşturulan
+15 dakikalık JWT yalnızca parola değiştirme isteğinde kullanılabilir. Böylece
+geçici parola ikinci kez kullanılamaz ve reset token'ı diğer API'lere erişemez.
+E-posta var/yok bilgisini açığa çıkarmamak için endpoint her durumda aynı
+başarı mesajını döndürür; aynı hesap için gönderimler arasında 60 saniye
+bekleme uygulanır.
+
 Swagger endpoint'leri de public olarak yapılandırılmıştır:
 
 - `/v3/api-docs/**`
@@ -558,25 +597,39 @@ Swagger endpoint'leri de public olarak yapılandırılmıştır:
 
 `AdminBootstrap`, uygulama açılışında `BOOTSTRAP_ADMIN_EMAIL` ve
 `BOOTSTRAP_ADMIN_PASSWORD` ayarlarını kontrol eder. İkisi de tanımlı değilse
-bootstrap atlanır; yalnızca biri tanımlıysa veya parola 8 karakterden kısaysa
-uygulama başlatılmaz. E-posta adresi henüz kayıtlı değilse BCrypt ile
-şifrelenmiş, `ROLE_ADMIN` rolünde ve ilk girişte parola değişikliği zorunlu
-olan hesap oluşturulur. Aynı e-posta mevcutsa hesap değiştirilmez.
+bootstrap atlanır; yalnızca biri tanımlıysa uygulama başlatılmaz. Yeni admin
+parolası, veritabanındaki etkin parola politikalarına göre doğrulanır. E-posta
+adresi henüz kayıtlı değilse BCrypt ile şifrelenmiş, `ROLE_ADMIN` rolünde ve
+ilk girişte parola değişikliği zorunlu olan hesap oluşturulur. Aynı e-posta
+mevcutsa hesap değiştirilmez.
 
-Admin dahil kullanıcılar yeni parola belirlerken en az 8 karakter girmelidir;
-bu kural hem Frontend formunda hem Backend doğrulamasında uygulanır.
+`auth_password_policies` tablosu parola kurallarının kodunu, açıklamasını,
+etkinliğini ve sayısal miktarını (`qty`) saklar. Varsayılan olarak minimum
+uzunluk 8 karakter etkin; maksimum uzunluk, rakam, özel karakter, küçük harf,
+büyük harf ve parola geçerlilik süresi kuralları devre dışıdır. Admin,
+Frontend'deki **Parola politikaları** ekranından her kuralı açıp kapatabilir ve
+miktarını ayarlayabilir. Backend, parola değiştirme ve ilk admin oluşturma
+sırasında etkin uzunluk/karakter koşullarını uygular.
+
+Etkin `MAX_AGE_DAYS` kuralı parolanın azami geçerlilik süresini gün cinsinden
+belirler. Parola değişim zamanı `users.password_changed_at` alanında tutulur.
+Süresi dolmuş kullanıcı login olabilir; login cevabında
+`newPasswordRequired=true` döner ve `new_password_flag` kalıcı olarak
+etkinleştirilir. Kullanıcı yeni parolasını belirleyene kadar API erişimi
+parola değiştirme endpoint'iyle sınırlıdır.
+Parola değişince flag temizlenir ve geçerlilik zamanı yenilenir.
 
 `start.sh` ilk admin parolasını rastgele üretip `uctma/.env` dosyasına yazar.
 İlk giriş için e-posta ve parolayı bu dosyadan alın; parolayı güvenli biçimde
 saklayın ve ilk girişte değiştirin. `.env` dosyası kaynak kontrolüne
 eklenmemelidir.
 
-### 8.2 User oluşturma
+### 8.2 Admin daveti
 
-Admin aşağıdaki endpoint'i çağırır:
+Admin, kullanıcıyı davet etmek için aşağıdaki endpoint'i çağırır:
 
 ```http
-POST /uctma/api/auth/register
+POST /uctma/api/auth/invite
 ```
 
 Request body:
@@ -588,7 +641,7 @@ Request body:
 }
 ```
 
-Backend geçici bir şifre üretir.
+Backend kullanıcı için geçici bir şifre üretir.
 
 Backend şifreyi encode ederek database'e kaydeder.
 
@@ -596,7 +649,30 @@ Backend geçici şifreyi e-posta ile gönderir.
 
 Yeni user için `newPasswordFlag=true` olur.
 
-### 8.3 Login
+### 8.3 Kayıt ve e-posta doğrulama
+
+Varsayılan olarak herkese açık kayıt kapalıdır; admin bu modu Frontend'deki
+**Uygulama ayarları → Hesap ve kayıt** bölümünden açabilir. Hesap oluşturma
+yöntemi **Davet** olduğunda public kayıt bağlantısı gösterilmez ve
+`/uctma/api/auth/invite` yalnızca `ROLE_ADMIN` erişimine açıktır. Bu endpoint
+istenen kullanıcı rolünü request body'den aldığı için public yapılmaz.
+
+**Kayıt** seçildiğinde login ekranında kayıt bağlantısı görünür. Bu akış
+`POST /uctma/api/auth/register` endpoint'ini kullanır ve hesapları daima
+`ROLE_USER` olarak oluşturur. Kayıt kapalıysa endpoint public erişilebilir olsa
+da servis kayıt isteğini reddeder. Response, kullanıcı mesajına ek olarak o
+kayıt için Backend'in gerçekten uyguladığı `emailVerificationRequired` değerini döndürür;
+Frontend doğrulama adımını bu değere göre açar.
+
+E-posta doğrulaması zorunluysa kayıt sonrası altı haneli kod e-posta ile
+gönderilir; kod hash'li saklanır, süresi ve deneme sayısı sınırlandırılır.
+Kullanıcı doğrulamayı tamamlamadan login olamaz. Gerekirse
+`POST /uctma/api/auth/resend-verification` ile yeni kod istenebilir; e-posta
+varlığını açığa çıkarmayan genel yanıt kullanılır. Bekleme süresi devam
+ediyorsa yeni kod gönderilmez ve aynı genel yanıt korunur. Doğrulama zorunluluğu
+**Uygulama ayarları → Hesap ve kayıt** bölümünden değiştirilebilir.
+
+### 8.4 Login
 
 Endpoint:
 
@@ -610,6 +686,7 @@ Login response aşağıdaki alanları içerir:
 - `token`
 - `tokenType`
 - `newPasswordRequired`
+- `passwordResetSession`
 - `role`
 
 Frontend token ve role değerlerini `localStorage` içinde tutar.
@@ -619,7 +696,7 @@ Kullanılan key'ler:
 - `uctma_token`
 - `uctma_role`
 
-### 8.4 İlk şifre değişikliği
+### 8.5 İlk şifre değişikliği
 
 Geçici şifre ile login yapıldığında `newPasswordRequired=true` olabilir.
 
@@ -643,7 +720,48 @@ Request body:
 
 Başarılı işlemden sonra `newPasswordFlag=false` olur.
 
-### 8.5 User silme
+### 8.6 Şifremi unuttum
+
+Login ekranındaki **Parolamı unuttum** bağlantısı e-posta adresini alır ve
+aşağıdaki public endpoint'i çağırır:
+
+```http
+POST /uctma/api/auth/forgot-password
+```
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Hesap varsa e-postayla 30 dakika geçerli tek kullanımlık geçici parola
+gönderilir. Bu parola login'de bir kez tüketilir. Login yanıtı
+`newPasswordRequired=true` döndürür ve kısa ömürlü reset JWT'si yalnızca
+`/change-password` endpoint'ine erişebilir. Yeni parola başarıyla kaydedilince
+reset oturumu ve geçici kimlik bilgileri geçersiz kılınır. Hesap bulunmasa veya
+e-posta doğrulanmamış olsa da aynı genel yanıt verilir.
+Reset login'i yenilenirse parola değiştirme ekranı yeniden açılır; parola
+belirlendikten sonra reset token'ı geçersizleştiğinden kullanıcı tekrar login
+ekranına yönlendirilir.
+
+### 8.7 Parola politikaları ve son kullanma süresi
+
+Yalnızca `ROLE_ADMIN` parola politikalarını görüntüleyip değiştirebilir. Admin bu ayarlara
+Frontend'deki **Uygulama ayarları → Parola politikaları** bölümünden ulaşır:
+
+```http
+GET /uctma/api/auth/password-policies
+PUT /uctma/api/auth/password-policies
+```
+
+PUT isteği her politika için `passwordPolicyCode`, `enabled` ve `qty` alanlarını
+gönderir. Uzunluk ve karakter türü politikaları parola değişiminde doğrulanır.
+`MAX_AGE_DAYS` etkinse Backend login'de parola yaşını denetler; süresi dolan
+parola için `newPasswordRequired` döner ve parola değişimi tamamlanana kadar
+korumalı endpoint'leri engeller.
+
+### 8.8 User silme
 
 Endpoint:
 
@@ -652,6 +770,19 @@ DELETE /uctma/api/auth/delete?email=user@example.com
 ```
 
 Aktif admin kendi hesabını silemez.
+
+### 8.9 Hesabı etkinleştirme ve hatalı giriş kilidi
+
+`users.enabled` hesabın aktif olup olmadığını, `users.failed_login_attempts`
+ise başarılı girişten beri yapılan hatalı parola denemesi sayısını tutar.
+Admin kullanıcılar ekranından hesabı etkinleştirebilir veya devre dışı
+bırakabilir; etkinleştirme sayacı sıfırlar. Admin kendi hesabını devre dışı
+bırakamaz. Devre dışı hesap giriş yapamaz ve mevcut JWT istekleri de reddedilir.
+
+**Uygulama ayarları → Hesap ve kayıt** bölümündeki hatalı giriş kilidi
+etkinleştirildiğinde, ayarlanan sınıra ulaşan hesap otomatik devre dışı kalır.
+Varsayılan sınır 5'tir. Kilit ayarı kapalı olsa bile hatalı giriş sayacı tutulur;
+başarılı giriş sayacı sıfırlar.
 
 ## 9. File işlemleri
 
@@ -1139,33 +1270,40 @@ Frontend dosya yapısı:
 
 ```text
 uctma_frontend/
-├── app/
-│   ├── page.tsx
-│   ├── layout.tsx
-│   └── globals.css
-├── components/
-│   ├── ChunksDialog.tsx
-│   ├── FileTable.tsx
-│   ├── FileUploader.tsx
-│   ├── LoginScreen.tsx
-│   ├── Modal.tsx
-│   ├── Navbar.tsx
-│   ├── PasswordForm.tsx
-│   ├── RegisterForm.tsx
-│   ├── UrlUploader.tsx
-│   └── UsersDialog.tsx
-├── hooks/
-│   ├── useAuth.ts
-│   ├── useFiles.ts
-│   └── useTheme.ts
-└── lib/
-    ├── api.ts
-    └── types.ts
+|-- app/
+|   |-- page.tsx
+|   |-- layout.tsx
+|   `-- globals.css
+|-- components/
+|   |-- ApplicationSettingsDialog.tsx
+|   |-- ChunksDialog.tsx
+|   |-- FileTable.tsx
+|   |-- FileUploader.tsx
+|   |-- LoginScreen.tsx
+|   |-- Modal.tsx
+|   |-- Navbar.tsx
+|   |-- PasswordForm.tsx
+|   |-- InviteForm.tsx
+|   |-- RegistrationForm.tsx
+|   |-- UrlUploader.tsx
+|   `-- UsersDialog.tsx
+|-- hooks/
+|   |-- useAuthAccountSettings.ts
+|   |-- useAuth.ts
+|   |-- useFiles.ts
+|   |-- usePasswordPolicies.ts
+|   `-- useTheme.ts
+`-- lib/
+    |-- api.ts
+    `-- types.ts
 ```
 
 `app/page.tsx` ekran state'ini ve bileşenler arası akışı yönetir.
 
 `components/` UI bileşenlerini içerir.
+
+`ApplicationSettingsDialog.tsx` adminin hesap/kayıt ayarları ve parola
+politikalarını tek modal içindeki ayrı bölümlerde düzenlemesini sağlar.
 
 `hooks/useAuth.ts` Authentication state'ini yönetir.
 
@@ -1208,9 +1346,19 @@ adı bulunur.
 | Method | Endpoint | Yetki | Açıklama |
 |---|---|---|---|
 | `POST` | `/uctma/api/auth/login` | Public | Login |
-| `POST` | `/uctma/api/auth/register` | `ROLE_ADMIN` | User oluşturma |
+| `POST` | `/uctma/api/auth/forgot-password` | Public | Tek kullanımlık geçici parola isteme |
+| `GET` | `/uctma/api/auth/public-settings` | Public | Login ekranında gereken kayıt ayarlarını alma |
+| `POST` | `/uctma/api/auth/register` | Public; ayara bağlı | Kayıt ile `ROLE_USER` oluşturma |
+| `POST` | `/uctma/api/auth/verify-email` | Public | Kayıtlı e-posta doğrulama kodunu kullanma |
+| `POST` | `/uctma/api/auth/resend-verification?email=...` | Public | Doğrulama kodunu yeniden isteme |
+| `POST` | `/uctma/api/auth/invite` | `ROLE_ADMIN` | Kullanıcı davet etme |
 | `POST` | `/uctma/api/auth/change-password` | Authenticated | Password değiştirme |
+| `GET` | `/uctma/api/auth/password-policies` | `ROLE_ADMIN` | Parola kurallarını listeleme |
+| `PUT` | `/uctma/api/auth/password-policies` | `ROLE_ADMIN` | Parola kurallarını güncelleme |
+| `GET` | `/uctma/api/auth/account-settings` | `ROLE_ADMIN` | Hesap ve kayıt ayarlarını listeleme |
+| `PUT` | `/uctma/api/auth/account-settings` | `ROLE_ADMIN` | Hesap ve kayıt ayarlarını güncelleme |
 | `GET` | `/uctma/api/auth/list-users` | `ROLE_ADMIN` | User listesi |
+| `PUT` | `/uctma/api/auth/users/{email}/enabled` | `ROLE_ADMIN` | Hesabı etkinleştirme/devre dışı bırakma |
 | `DELETE` | `/uctma/api/auth/delete?email=...` | `ROLE_ADMIN` | User silme |
 
 ### 17.2 File endpoint'leri

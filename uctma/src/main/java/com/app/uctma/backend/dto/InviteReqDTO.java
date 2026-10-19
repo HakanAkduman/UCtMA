@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
-public class RegisterReqDTO {
+public class InviteReqDTO {
     @Email
     @NotEmpty(message = "Email can not be empty")
     private String email;

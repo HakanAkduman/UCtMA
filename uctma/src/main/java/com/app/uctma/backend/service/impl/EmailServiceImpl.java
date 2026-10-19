@@ -27,4 +27,32 @@ public class EmailServiceImpl implements EmailService {
 
         mailSender.send(message);
     }
+
+    @Override
+    public void sendPasswordResetTemporaryPassword(String targetMail, String password, int validForMinutes) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(targetMail);
+        message.setSubject("UCTMA parola sıfırlama");
+        message.setText("Merhaba,\n\n" +
+                "Parola sıfırlama talebiniz için geçici parolanız:\n\n" +
+                password + "\n\n" +
+                "Bu parola " + validForMinutes + " dakika içinde kullanılmalıdır. " +
+                "Bu parolayla giriş yaptığınızda yalnızca yeni parola belirleme ekranına erişebilirsiniz; " +
+                "geçici parola girişte tek kullanımlıktır.\n\n" +
+                "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.");
+        mailSender.send(message);
+    }
+
+    @Override
+    public void sendEmailVerificationCode(String targetMail, String code, int validForMinutes) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(targetMail);
+        message.setSubject("UCTMA e-posta doğrulama kodu");
+        message.setText("Merhaba,\n\n" +
+                "Hesabınızı doğrulamak için aşağıdaki kodu kullanın:\n\n" +
+                code + "\n\n" +
+                "Bu kod " + validForMinutes + " dakika boyunca geçerlidir. " +
+                "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.");
+        mailSender.send(message);
+    }
 }

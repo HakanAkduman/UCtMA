@@ -5,15 +5,16 @@ import { useTheme } from "../hooks/useTheme";
 type NavbarProps = {
   isAdmin: boolean;
   onPassword: () => void;
-  onRegister: () => void;
+  onInvite: () => void;
   onUsers: () => void;
+  onApplicationSettings: () => void;
   onUrlUpload: () => void;
   onLogout: () => void;
 };
 
 // Navbar yalnızca navigasyon ve aksiyon butonlarını gösterir.
 // Yetki kontrolü için backend'den gelen isAdmin bilgisi kullanılır.
-export function Navbar({ isAdmin, onPassword, onRegister, onUsers, onUrlUpload, onLogout }: NavbarProps) {
+export function Navbar({ isAdmin, onPassword, onInvite, onUsers, onApplicationSettings, onUrlUpload, onLogout }: NavbarProps) {
   const { isDark, toggleTheme } = useTheme();
 
   return (
@@ -24,12 +25,13 @@ export function Navbar({ isAdmin, onPassword, onRegister, onUsers, onUrlUpload, 
       </div>
       <nav className="flex flex-wrap gap-2" aria-label="Uygulama işlemleri">
         <button className="button-secondary" title={isDark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={isDark ? "Açık temaya geç" : "Koyu temaya geç"} onClick={toggleTheme}>
-          { isDark ? "☀️" : "🌙"}
+          { isDark ? "☀️" : "🌜"}
         </button>
         <button className="button-secondary" onClick={onPassword}>Şifre değiştir</button>
         <button className="button-secondary" onClick={onUrlUpload}>URL'den yükle</button>
-        {isAdmin && <button className="button-secondary" onClick={onRegister}>Kullanıcı oluştur</button>}
+        {isAdmin && <button className="button-secondary" onClick={onInvite}>Kullanıcı davet et</button>}
         {isAdmin && <button className="button-secondary" onClick={onUsers}>Kullanıcılar</button>}
+        {isAdmin && <button className="button-secondary" onClick={onApplicationSettings}>Uygulama ayarları</button>}
         <button className="button-secondary" onClick={onLogout}>Çıkış</button>
       </nav>
     </header>

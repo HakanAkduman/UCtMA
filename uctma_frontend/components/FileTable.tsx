@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FileItem } from "../lib/types";
 
 type ActionIconName = "reconvert" | "preview" | "markdown" | "chunks" | "archive" | "delete";
+type FileSortOrder = "name-asc" | "name-desc" | "created-desc" | "created-asc";
 
 function ActionIcon({ name }: { name: ActionIconName }) {
   const commonProps = {
@@ -45,6 +46,58 @@ type FileTableProps = {
 // API çağrıları parent'tan gelen callback'ler üzerinden çalıştırılır.
 export function FileTable({ files, busy, onReconvert, onDownload, onPreview, onChunks, onDelete }: FileTableProps) {
   const [expandedErrorFileId, setExpandedErrorFileId] = useState<number | null>(null);
+  const [nameFilter, setNameFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<FileItem["status"] | "ALL">("ALL");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [sortOrder, setSortOrder] = useState<FileSortOrder>("created-desc");
+
+  const visibleFiles = useMemo(() => {
+    const normalizedNameFilter = nameFilter.trim().toLocaleLowerCase("tr-TR");
+    const fromDate = createdFrom ? new Date(`${createdFrom}T00:00:00`) : null;
+    const toDate = createdTo ? new Date(`${createdTo}T23:59:59.999`) : null;
+
+    return files
+      .filter((file) => {
+        if (normalizedNameFilter && !file.originalFileName.toLocaleLowerCase("tr-TR").includes(normalizedNameFilter)) {
+          return false;
+        }
+        if (statusFilter !== "ALL" && file.status !== statusFilter) return false;
+
+        const createdAt = new Date(file.createdAt);
+        if (fromDate && (!Number.isFinite(createdAt.getTime()) || createdAt < fromDate)) return false;
+        if (toDate && (!Number.isFinite(createdAt.getTime()) || createdAt > toDate)) return false;
+        return true;
+      })
+      .sort((left, right) => {
+        if (sortOrder === "name-asc" || sortOrder === "name-desc") {
+          const direction = sortOrder === "name-asc" ? 1 : -1;
+          return left.originalFileName.localeCompare(right.originalFileName, "tr", { sensitivity: "base" }) * direction;
+        }
+
+        const direction = sortOrder === "created-asc" ? 1 : -1;
+        const leftCreatedAt = new Date(left.createdAt).getTime();
+        const rightCreatedAt = new Date(right.createdAt).getTime();
+        const leftValue = Number.isFinite(leftCreatedAt) ? leftCreatedAt : Number.NEGATIVE_INFINITY;
+        const rightValue = Number.isFinite(rightCreatedAt) ? rightCreatedAt : Number.NEGATIVE_INFINITY;
+        return (leftValue - rightValue) * direction;
+      });
+  }, [createdFrom, createdTo, files, nameFilter, sortOrder, statusFilter]);
+
+  function formatCreatedAt(value: string) {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime())
+      ? new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(date)
+      : "—";
+  }
+
+  function clearFilters() {
+    setNameFilter("");
+    setStatusFilter("ALL");
+    setCreatedFrom("");
+    setCreatedTo("");
+    setSortOrder("created-desc");
+  }
 
   function statusLabel(status: FileItem["status"]) {
     return {
@@ -66,16 +119,62 @@ export function FileTable({ files, busy, onReconvert, onDownload, onPreview, onC
 
   return (
     <section className="overflow-hidden rounded-xl bg-white shadow">
-      <table className="w-full table-fixed text-left text-sm">
+      <div className="grid gap-3 border-b p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+          Dosya adına göre filtrele
+          <input
+            className="input w-full"
+            type="search"
+            value={nameFilter}
+            onChange={(event) => setNameFilter(event.target.value)}
+            placeholder="Dosya adı"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+          Duruma göre filtrele
+          <select className="input w-full" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as FileItem["status"] | "ALL")}>
+            <option value="ALL">Tüm durumlar</option>
+            <option value="PENDING">Bekliyor</option>
+            <option value="PROCESSING">İşleniyor</option>
+            <option value="COMPLETED">Tamamlandı</option>
+            <option value="FAILED">Başarısız</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+          Oluşturulma tarihi (başlangıç)
+          <input className="input w-full" type="date" value={createdFrom} max={createdTo || undefined} onChange={(event) => setCreatedFrom(event.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+          Oluşturulma tarihi (bitiş)
+          <input className="input w-full" type="date" value={createdTo} min={createdFrom || undefined} onChange={(event) => setCreatedTo(event.target.value)} />
+        </label>
+        <div className="flex items-end gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+            Sıralama
+            <select className="input w-full" value={sortOrder} onChange={(event) => setSortOrder(event.target.value as FileSortOrder)}>
+              <option value="created-desc">En yeni</option>
+              <option value="created-asc">En eski</option>
+              <option value="name-asc">İsim (A-Z)</option>
+              <option value="name-desc">İsim (Z-A)</option>
+            </select>
+          </label>
+          <button type="button" className="button-secondary h-[42px] whitespace-nowrap" onClick={clearFilters}>
+            Temizle
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[900px] table-fixed text-left text-sm">
         <thead className="border-b bg-slate-50">
           <tr>
-            <th className="w-1/2 p-4">Dosya</th>
-            <th className="w-1/6 p-4">Durum</th>
+            <th className="w-[28%] p-4">Dosya</th>
+            <th className="w-[16%] p-4">Oluşturulma tarihi</th>
+            <th className="w-[14%] p-4">Durum</th>
             <th className="p-4">İşlemler</th>
           </tr>
         </thead>
         <tbody>
-          {files.map((file) => <tr key={file.id} className="border-b">
+          {visibleFiles.map((file) => <tr key={file.id} className="border-b">
             <td className="max-w-0 break-words p-4 align-top">
               {file.originalFileName}
               {file.fileType && (
@@ -84,6 +183,7 @@ export function FileTable({ files, busy, onReconvert, onDownload, onPreview, onC
                 </span>
               )}
             </td>
+            <td className="p-4 align-top">{formatCreatedAt(file.createdAt)}</td>
             <td className="break-words p-4 align-top">
               {file.errorMessage?.trim() ? (
                 <>
@@ -179,12 +279,17 @@ export function FileTable({ files, busy, onReconvert, onDownload, onPreview, onC
           </tr>)}
         </tbody>
       </table>
-      {files.length === 0 && (
+      </div>
+      {files.length === 0 ? (
         <div className="p-10 text-center">
           <p className="font-medium">Henüz dosya yok</p>
           <p className="mt-1 text-sm text-slate-500">İlk dosyanızı yukarıdaki alandan yükleyin.</p>
         </div>
-      )}
+      ) : visibleFiles.length === 0 ? (
+        <div className="p-10 text-center text-sm text-slate-500">
+          Seçilen filtrelerle eşleşen dosya bulunamadı.
+        </div>
+      ) : null}
     </section>
   );
 }

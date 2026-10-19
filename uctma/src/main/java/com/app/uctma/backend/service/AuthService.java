@@ -11,13 +11,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public interface AuthService {
-    public String register(RegisterReqDTO registerReqDTO);
+    public String invite(InviteReqDTO inviteReqDTO);
 
     public String delete(String email);
 
     public List<UserListResDTO> listOfUsers();
 
+    public UserListResDTO updateUserEnabled(String email, boolean enabled);
+
     public LoginResDTO login( LoginReqDTO loginReqDTO);
 
-    public String changePassword(ChangePasswordReqDTO changePasswordReqDTO);
+    public String forgotPassword(ForgotPasswordReqDTO forgotPasswordReqDTO);
+
+    public String changePassword(ChangePasswordReqDTO changePasswordReqDTO, String passwordResetSessionId);
 }
