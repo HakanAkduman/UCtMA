@@ -4,6 +4,8 @@ import { LoginResult } from "../lib/types";
 
 const TOKEN_KEY = "uctma_token";
 const ROLE_KEY = "uctma_role";
+const MUST_CHANGE_PASSWORD_KEY = "uctma_must_change_password";
+const PASSWORD_RESET_SESSION_KEY = "uctma_password_reset_session";
 
 export function useAuth() {
   // Auth bilgileri hem React state'inde hem de localStorage'da tutulur.
@@ -16,6 +18,7 @@ export function useAuth() {
   const [password, setPassword] = useState("");
   // Backend geçici şifre kullanıldığını bildirirse password dialog'u zorunlu açılır.
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [passwordResetSession, setPasswordResetSession] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -25,6 +28,8 @@ export function useAuth() {
     if (savedToken) {
       setToken(savedToken);
       setIsAdmin(window.localStorage.getItem(ROLE_KEY) === "ROLE_ADMIN");
+      setMustChangePassword(window.localStorage.getItem(MUST_CHANGE_PASSWORD_KEY) === "true");
+      setPasswordResetSession(window.localStorage.getItem(PASSWORD_RESET_SESSION_KEY) === "true");
     }
   }, []);
 
@@ -39,9 +44,12 @@ export function useAuth() {
     });
     window.localStorage.setItem(TOKEN_KEY, result.token);
     window.localStorage.setItem(ROLE_KEY, result.role);
+    window.localStorage.setItem(MUST_CHANGE_PASSWORD_KEY, String(result.newPasswordRequired));
+    window.localStorage.setItem(PASSWORD_RESET_SESSION_KEY, String(result.passwordResetSession));
     setToken(result.token);
     setIsAdmin(result.role === "ROLE_ADMIN");
     setMustChangePassword(result.newPasswordRequired);
+    setPasswordResetSession(result.passwordResetSession);
     return result.newPasswordRequired;
   }
 
@@ -63,18 +71,27 @@ export function useAuth() {
     setNewPassword("");
     setConfirmPassword("");
     setMustChangePassword(false);
+    window.localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY);
+    window.localStorage.removeItem(PASSWORD_RESET_SESSION_KEY);
+    setPasswordResetSession(false);
+    return passwordResetSession;
   }
 
   // Oturumu hem React state'inden hem de localStorage'dan temizler.
   function logout() {
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(ROLE_KEY);
+    window.localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY);
+    window.localStorage.removeItem(PASSWORD_RESET_SESSION_KEY);
     setToken(null);
     setIsAdmin(false);
+    setPassword("");
+    setMustChangePassword(false);
+    setPasswordResetSession(false);
   }
 
   return {
-    token, isAdmin, email, password, mustChangePassword, newPassword, confirmPassword,
+    token, isAdmin, email, password, mustChangePassword, passwordResetSession, newPassword, confirmPassword,
     setEmail, setPassword, setNewPassword, setConfirmPassword, setMustChangePassword,
     login, changePassword, logout,
   };

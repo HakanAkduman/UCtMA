@@ -4,5 +4,7 @@ import com.app.uctma.backend.model.Role;
 
 public record UserListResDTO(
         String email,
-        Role role
+        Role role,
+        boolean enabled,
+        int failedLoginAttempts
 ) {}

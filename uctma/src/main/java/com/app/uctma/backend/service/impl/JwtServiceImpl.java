@@ -31,11 +31,23 @@ public class JwtServiceImpl implements JwtService {
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("role", role);
 
+        return buildToken(username, extraClaims, jwtExpiration);
+    }
+
+    @Override
+    public String generatePasswordResetToken(String username, String role, String resetSessionId) {
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put("role", role);
+        extraClaims.put("passwordResetSessionId", resetSessionId);
+        return buildToken(username, extraClaims, Math.min(jwtExpiration, 15 * 60 * 1000L));
+    }
+
+    private String buildToken(String username, Map<String, Object> extraClaims, long expiration) {
         return Jwts.builder()
                 .claims(extraClaims)
                 .subject(username)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSignInKey(), Jwts.SIG.HS256)
                 .compact();
     }
@@ -43,6 +55,11 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
+    }
+
+    @Override
+    public String extractPasswordResetSessionId(String token) {
+        return extractClaim(token, claims -> claims.get("passwordResetSessionId", String.class));
     }
 
     @Override

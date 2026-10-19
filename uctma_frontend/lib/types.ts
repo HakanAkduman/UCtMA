@@ -22,6 +22,8 @@ export type ChunkItem = {
 export type UserItem = {
   email: string;
   role: "ROLE_USER" | "ROLE_ADMIN";
+  enabled: boolean;
+  failedLoginAttempts: number;
 };
 
 // Login response'u frontend'in oturum ve admin görünürlüğünü belirler.
@@ -29,6 +31,28 @@ export type LoginResult = {
   token: string;
   newPasswordRequired: boolean;
   role: "ROLE_USER" | "ROLE_ADMIN";
+  passwordResetSession: boolean;
+};
+
+export type PasswordPolicy = {
+  id: number;
+  passwordPolicyCode: string;
+  description: string;
+  enabled: boolean;
+  qty: number;
+};
+
+export type AuthAccountSetting = {
+  id: number;
+  settingCode: string;
+  description: string;
+  enabled: boolean;
+  qty: number;
+};
+
+export type AuthPublicSettings = {
+  registrationEnabled: boolean;
+  emailVerificationRequired: boolean;
 };
 
 // Tüm JSON API çağrılarında kullanılan ortak response zarfı.

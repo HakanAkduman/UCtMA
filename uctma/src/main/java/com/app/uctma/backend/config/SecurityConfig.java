@@ -26,15 +26,32 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 1. Herkese açık endpoint'ler (Giriş yapmadan erişilebilir)
                         .requestMatchers("/uctma/api/auth/login").permitAll()
+                        .requestMatchers("/uctma/api/auth/forgot-password").permitAll()
+                        .requestMatchers("/uctma/api/auth/public-settings").permitAll()
+                        // Public registration is rejected by the service unless enabled in account settings.
+                        .requestMatchers("/uctma/api/auth/register").permitAll()
+                        .requestMatchers("/uctma/api/auth/verify-email").permitAll()
+                        .requestMatchers("/uctma/api/auth/resend-verification").permitAll()
                         .requestMatchers("/uctma/api/file/callback").permitAll()
 
-                        // 2. Sadece ADMIN olanların erişebileceği endpoint'ler
-                        .requestMatchers("/uctma/api/auth/register").hasAuthority("ROLE_ADMIN")
+                        // Invitation accepts a requested role and is restricted to admins.
+                        .requestMatchers("/uctma/api/auth/invite").hasAuthority("ROLE_ADMIN")
+                        // 2. Sadece ADMIN olanların erişebileceği diğer endpoint'ler
                         .requestMatchers("/uctma/api/auth/list-users").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/uctma/api/auth/delete").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT,
+                                "/uctma/api/auth/users/*/enabled").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT,
+                                "/uctma/api/auth/password-policies").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/uctma/api/auth/account-settings").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT,
+                                "/uctma/api/auth/account-settings").hasAuthority("ROLE_ADMIN")
 
                         // 3. Giriş yapmış HER HANGİ bir kullanıcının erişebileceği endpoint'ler
                         .requestMatchers("/uctma/api/auth/change-password").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/uctma/api/auth/password-policies").hasAuthority("ROLE_ADMIN")
 
                         .requestMatchers(
                                 "/v3/api-docs/**",

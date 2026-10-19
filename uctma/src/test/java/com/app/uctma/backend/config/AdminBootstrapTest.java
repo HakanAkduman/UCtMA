@@ -3,6 +3,7 @@ package com.app.uctma.backend.config;
 import com.app.uctma.backend.model.Role;
 import com.app.uctma.backend.model.User;
 import com.app.uctma.backend.repository.UserRepository;
+import com.app.uctma.backend.service.PasswordPolicyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -23,11 +24,13 @@ class AdminBootstrapTest {
 
     private UserRepository userRepository;
     private PasswordEncoder passwordEncoder;
+    private PasswordPolicyService passwordPolicyService;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
+        passwordPolicyService = mock(PasswordPolicyService.class);
     }
 
     @Test
@@ -45,6 +48,7 @@ class AdminBootstrapTest {
         assertEquals(Role.ROLE_ADMIN, savedUser.getValue().getRole());
         assertTrue(savedUser.getValue().isNewPasswordFlag());
         verify(passwordEncoder).encode("a-secure-initial-password");
+        verify(passwordPolicyService).validatePassword("a-secure-initial-password");
     }
 
     @Test
@@ -56,6 +60,7 @@ class AdminBootstrapTest {
 
         verify(userRepository, never()).save(any(User.class));
         verify(passwordEncoder, never()).encode(any());
+        verify(passwordPolicyService, never()).validatePassword(any());
         assertEquals(Role.ROLE_USER, existingUser.getRole());
     }
 
@@ -68,9 +73,8 @@ class AdminBootstrapTest {
     }
 
     @Test
-    void rejectsPartialOrWeakBootstrapCredentials() {
+    void rejectsPartialBootstrapCredentials() {
         assertThrows(IllegalStateException.class, () -> bootstrap("admin@example.com", "").run(arguments()));
-        assertThrows(IllegalStateException.class, () -> bootstrap("admin@example.com", "1234567").run(arguments()));
 
         verify(userRepository, never()).save(any(User.class));
     }
@@ -83,10 +87,11 @@ class AdminBootstrapTest {
         bootstrap("admin@example.com", "12345678").run(arguments());
 
         verify(userRepository).save(any(User.class));
+        verify(passwordPolicyService).validatePassword("12345678");
     }
 
     private AdminBootstrap bootstrap(String email, String password) {
-        return new AdminBootstrap(userRepository, passwordEncoder, email, password);
+        return new AdminBootstrap(userRepository, passwordEncoder, passwordPolicyService, email, password);
     }
 
     private DefaultApplicationArguments arguments() {

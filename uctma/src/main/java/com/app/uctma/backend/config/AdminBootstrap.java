@@ -3,6 +3,7 @@ package com.app.uctma.backend.config;
 import com.app.uctma.backend.model.Role;
 import com.app.uctma.backend.model.User;
 import com.app.uctma.backend.repository.UserRepository;
+import com.app.uctma.backend.service.PasswordPolicyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -19,17 +20,20 @@ public class AdminBootstrap implements ApplicationRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyService passwordPolicyService;
     private final String adminEmail;
     private final String adminPassword;
 
     public AdminBootstrap(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
+            PasswordPolicyService passwordPolicyService,
             @Value("${BOOTSTRAP_ADMIN_EMAIL:}") String adminEmail,
             @Value("${BOOTSTRAP_ADMIN_PASSWORD:}") String adminPassword
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.passwordPolicyService = passwordPolicyService;
         this.adminEmail = adminEmail;
         this.adminPassword = adminPassword;
     }
@@ -43,15 +47,12 @@ public class AdminBootstrap implements ApplicationRunner {
         if (!StringUtils.hasText(adminEmail) || !StringUtils.hasText(adminPassword)) {
             throw new IllegalStateException("Both BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD must be configured.");
         }
-        if (adminPassword.length() < 8) {
-            throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters long.");
-        }
-
         if (userRepository.findByEmail(adminEmail).isPresent()) {
             logger.info("Bootstrap admin already exists; leaving the existing account unchanged.");
             return;
         }
 
+        passwordPolicyService.validatePassword(adminPassword);
         User admin = User.builder()
                 .email(adminEmail)
                 .password(passwordEncoder.encode(adminPassword))
